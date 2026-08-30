@@ -1,0 +1,21 @@
+{
+    "user_credentials": {
+        "username/email": "your_mosdac_email@example.org",
+        "password": "your_mosdac_password_or_token"
+    },
+    "search_parameters": {
+        "datasetId": "3SIMG_L1B_STD",
+        "startTime": "2026-08-30",
+        "endTime": "2026-08-30",
+        "count": "",
+        "boundingBox": "",
+        "gId": ""
+    },
+    "download_settings": {
+        "download_path": "data/raw_netcdf/mosdac",
+        "organize_by_date": false,
+        "skip_user_input": true,
+        "generate_error_logs": true,
+        "error_logs_dir": "error_logs"
+    }
+}

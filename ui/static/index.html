@@ -1,0 +1,2981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLINK | Operational Satellite Kinematics & Nowcasting Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <style>
+        /* ══════════════════════════════════════════════════════════════════════════ */
+        /*                          BLINK DESIGN TOKENS                               */
+        /* ══════════════════════════════════════════════════════════════════════════ */
+        :root {
+            /* Surfaces — True Neutral Grayscale */
+            --bg-canvas:         #0A0A0B;
+            --bg-surface:        #131417;
+            --bg-surface-raised: #1B1C20;
+            --bg-input:          #16171B;
+            --border-hairline:   #26272C;
+            --border-hairline-strong: #34363C;
+
+            /* Text — Clean Neutral Typography */
+            --text-primary:   #F2F2F3;
+            --text-secondary: #9A9CA3;
+            --text-tertiary:  #5C5E66;
+
+            /* Single Interactive Accent — Institutional, Flat */
+            --accent:         #4C8DFF;
+            --accent-hover:   #3B7BF0;
+            --accent-subtle:  rgba(76, 141, 255, 0.08);
+            --accent-subtle-border: rgba(76, 141, 255, 0.35);
+
+            /* Semantic Status (Okabe–Ito / Colorblind Safe) */
+            --status-nominal:  #2FA36B;
+            --status-caution:  #E0A72E;
+            --status-severe:   #E5484D;
+            --status-info:     #56B4E9;
+
+            /* Data-Source Identity Colors */
+            --data-raw:        #56B4E9;   /* Sky Blue */
+            --data-synth:      #2FA36B;   /* Bluish Green */
+
+            /* Typography & Geometry */
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius-sm: 4px;
+            --radius-md: 6px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-canvas);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 12px;
+            line-height: 1.4;
+            letter-spacing: -0.01em;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ─── APP SHELL: TOP NAVIGATION ─── */
+        .top-navbar {
+            height: 40px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-hairline);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 50;
+        }
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand-logo {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .brand-badge {
+            font-size: 10px;
+            font-family: var(--font-sans);
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            padding: 2px 7px;
+            border-radius: var(--radius-sm);
+        }
+        .brand-divider {
+            width: 1px;
+            height: 16px;
+            background: var(--border-hairline);
+        }
+        .brand-desc {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        /* Segmented Mode Switcher */
+        .segmented-control {
+            display: flex;
+            background: var(--bg-canvas);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 2px;
+            gap: 2px;
+        }
+        .segmented-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: color 0.15s, background-color 0.15s;
+        }
+        .segmented-btn:hover { color: var(--text-primary); }
+        .segmented-btn.active {
+            background: var(--bg-surface-raised);
+            color: var(--text-primary);
+            border: 1px solid var(--border-hairline-strong);
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+        }
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--status-nominal);
+        }
+
+        /* ─── MAIN WORKSTATION GRID ─── */
+        .app-container {
+            display: grid;
+            grid-template-columns: 250px 1fr 295px;
+            height: calc(100vh - 40px);
+            background: var(--bg-canvas);
+        }
+
+        /* ─── LEFT CONTROL RAIL ─── */
+        .panel-left {
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-hairline);
+            padding: 14px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-hairline) transparent;
+        }
+        .panel-left::-webkit-scrollbar { width: 4px; }
+        .panel-left::-webkit-scrollbar-thumb { background: var(--border-hairline); }
+
+        .control-section {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .section-heading {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            margin-bottom: 1px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .control-label {
+            font-size: 10.5px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        select, input[type="text"], input[type="file"] {
+            width: 100%;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 6px 8px;
+            font-family: var(--font-sans);
+            font-size: 11.5px;
+            outline: none;
+            appearance: none;
+            cursor: pointer;
+            transition: border-color 0.12s;
+        }
+        select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239A9CA3' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding-right: 22px;
+        }
+        select:focus, input:focus {
+            border-color: var(--accent);
+        }
+
+        .input-row-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        /* Direct Ingestion File Container */
+        .ingest-box {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .ingest-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            background: var(--bg-input);
+            padding: 4px 6px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-hairline);
+            font-size: 10.5px;
+        }
+        .ingest-badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--data-raw);
+        }
+        .ingest-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 120px;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 10px;
+        }
+        .ingest-browse-btn {
+            background: var(--bg-surface-raised);
+            color: var(--text-primary);
+            border: 1px solid var(--border-hairline-strong);
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 9.5px;
+            font-weight: 500;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .ingest-browse-btn:hover { background: var(--border-hairline-strong); }
+
+        /* Buttons */
+        .btn-primary {
+            width: 100%;
+            background: var(--accent);
+            color: #FFFFFF;
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-sm);
+            padding: 8px 12px;
+            font-family: var(--font-sans);
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.12s;
+            text-align: center;
+            letter-spacing: 0.02em;
+        }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary.loading { opacity: 0.6; pointer-events: none; }
+
+        .btn-outline {
+            width: 100%;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 6px 10px;
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.12s, color 0.12s;
+        }
+        .btn-outline:hover {
+            border-color: var(--border-hairline-strong);
+            color: var(--text-primary);
+        }
+
+        .hairline-divider {
+            height: 1px;
+            background: var(--border-hairline);
+            margin: 2px 0;
+        }
+
+        /* Checkbox Rows */
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            padding: 2px 0;
+        }
+        .checkbox-item input[type="checkbox"] {
+            appearance: none;
+            width: 13px; height: 13px;
+            border: 1px solid var(--border-hairline-strong);
+            border-radius: 2px;
+            background: var(--bg-input);
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .checkbox-item input[type="checkbox"]:checked {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        .checkbox-item input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            left: 3.5px; top: 1px;
+            width: 3.5px; height: 6.5px;
+            border: solid #FFFFFF;
+            border-width: 0 1.5px 1.5px 0;
+            transform: rotate(45deg);
+        }
+        .checkbox-item label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* Coordinates Indicator */
+        .coords-bar {
+            background: var(--bg-input);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 4px 8px;
+            font-family: var(--font-mono);
+            font-size: 10.5px;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+        .coords-val { color: var(--text-primary); font-weight: 500; }
+
+        /* ─── CENTER STAGE ─── */
+        .center-stage {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-canvas);
+            position: relative;
+        }
+
+        /* 3-Viewport Strip */
+        .viewport-strip {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            padding: 10px 12px 6px;
+            flex-shrink: 0;
+        }
+        .viewport-card {
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            background: #000000;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .viewport-card.synthesized-card {
+            border-color: var(--data-synth);
+            background: var(--bg-surface);
+        }
+        .viewport-card-header {
+            padding: 5px 8px;
+            font-size: 10.5px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-hairline);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .viewport-card.synthesized-card .viewport-card-header {
+            background: var(--bg-surface-raised);
+            color: var(--text-primary);
+        }
+        .viewport-tag {
+            font-family: var(--font-mono);
+            font-size: 9.5px;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 2px;
+        }
+        .viewport-tag.raw {
+            background: rgba(86, 180, 233, 0.12);
+            color: var(--data-raw);
+            border: 1px solid rgba(86, 180, 233, 0.3);
+        }
+        .viewport-tag.synth {
+            background: rgba(47, 163, 107, 0.12);
+            color: var(--data-synth);
+            border: 1px solid rgba(47, 163, 107, 0.3);
+        }
+
+        .viewport-canvas-container {
+            position: relative;
+            background: #000000;
+            aspect-ratio: 1.33;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+        .viewport-canvas-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            position: relative;
+            z-index: 2;
+        }
+        .simulation-basemap-canvas {
+            display: none;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .viewport-canvas-container.simulation-map-active .simulation-basemap-canvas {
+            display: block;
+        }
+        .viewport-canvas-container.simulation-map-active img {
+            opacity: 0.94;
+            mix-blend-mode: normal;
+            position: relative;
+            z-index: 2;
+        }
+        .viewport-canvas-container canvas.geo-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        /* Dedicated Video Playback Bar (Below Viewports, Never Overlapping) */
+        .playback-bar {
+            margin: 0 12px;
+            padding: 6px 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+        .playback-controls-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ctrl-btn {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline-strong);
+            color: var(--text-primary);
+            border-radius: var(--radius-sm);
+            padding: 3px 8px;
+            font-size: 10.5px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.1s;
+        }
+        .ctrl-btn:hover { background: var(--border-hairline-strong); }
+        .ctrl-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+        .playback-status-readout {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .playback-step-badge {
+            color: var(--data-synth);
+            font-weight: 600;
+        }
+
+        /* 1-Minute Scrubber Timeline */
+        .timeline-section {
+            margin: 6px 12px 0;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 6px 10px 8px;
+            flex-shrink: 0;
+        }
+        .timeline-legend-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .timeline-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-tertiary);
+        }
+        .timeline-swatches {
+            display: flex;
+            gap: 12px;
+        }
+        .timeline-swatch-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+        .swatch-box {
+            width: 8px; height: 8px;
+            border-radius: 2px;
+        }
+        .swatch-box.raw { background: var(--data-raw); }
+        .swatch-box.synth { background: var(--data-synth); }
+
+        .timeline-track-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .tl-scroll-btn {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            width: 20px; height: 46px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .tl-scroll-btn:hover { color: var(--text-primary); }
+
+        .timeline-strip-container {
+            flex: 1;
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            padding: 1px 0;
+        }
+        .timeline-strip-container::-webkit-scrollbar { display: none; }
+
+        .tl-item {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            cursor: pointer;
+            padding: 2px;
+            border-radius: var(--radius-sm);
+            border: 1px solid transparent;
+            background: var(--bg-canvas);
+            transition: border-color 0.12s, background 0.12s;
+        }
+        .tl-item:hover { background: var(--bg-surface-raised); }
+        .tl-item.selected {
+            background: var(--accent-subtle);
+            border-color: var(--accent);
+        }
+        .tl-item .tl-thumb {
+            width: 48px;
+            height: 32px;
+            border-radius: 2px;
+            object-fit: cover;
+            background: #000000;
+            border: 1px solid var(--border-hairline);
+        }
+        .tl-item.selected .tl-thumb { border-color: var(--accent); }
+        .tl-item .tl-time {
+            font-family: var(--font-mono);
+            font-size: 8.5px;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+        .tl-item.selected .tl-time { color: var(--accent); font-weight: 600; }
+        .tl-item .tl-indicator {
+            width: 4px; height: 4px;
+            border-radius: 50%;
+        }
+
+        /* ─── DIAGNOSTIC PANELS ROW (3 COLUMNS) ─── */
+        .diagnostics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.1fr;
+            gap: 8px;
+            padding: 8px 12px 10px;
+            flex: 1;
+            min-height: 0;
+        }
+        .diag-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .diag-card-header {
+            padding: 6px 10px;
+            background: var(--bg-surface-raised);
+            border-bottom: 1px solid var(--border-hairline);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .diag-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+        }
+        .diag-card-body {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .diag-canvas-wrapper {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+        .diag-canvas-wrapper canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Permanent Velocity Horizontal Legend */
+        .velocity-legend-bar {
+            padding: 4px 10px;
+            background: var(--bg-canvas);
+            border-top: 1px solid var(--border-hairline);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex-shrink: 0;
+        }
+        .velocity-bar-track {
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #081020, #06b6d4, #10b981, #f59e0b, #ef4444);
+            border: 1px solid var(--border-hairline);
+        }
+        .velocity-ticks {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 8px;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Temperature Profile Permanent Legend */
+        .temp-legend-bar {
+            padding: 4px 10px;
+            background: var(--bg-canvas);
+            border-top: 1px solid var(--border-hairline);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            font-size: 9.5px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        .temp-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .temp-line-indicator {
+            width: 12px;
+            height: 2px;
+            border-radius: 1px;
+        }
+
+        /* Nowcasting Hero Section */
+        .nowcast-content-container {
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            height: 100%;
+        }
+        .hero-metric-card {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .hero-metric-card.severe {
+            background: rgba(229, 72, 77, 0.08);
+            border-color: var(--status-severe);
+        }
+        .hero-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .hero-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+        }
+        .hero-badge {
+            font-size: 9.5px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .hero-badge.severe {
+            background: var(--status-severe);
+            color: #FFFFFF;
+        }
+        .hero-val-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+        .hero-big-number {
+            font-family: var(--font-mono);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .hero-subtext {
+            font-size: 10.5px;
+            color: var(--text-secondary);
+        }
+
+        .telemetry-grid-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10.5px;
+        }
+        .telemetry-grid-table td {
+            padding: 3.5px 0;
+            border-bottom: 1px solid var(--border-hairline);
+        }
+        .telemetry-grid-table td:first-child {
+            color: var(--text-secondary);
+        }
+        .telemetry-grid-table td:last-child {
+            font-family: var(--font-mono);
+            color: var(--text-primary);
+            text-align: right;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ─── RIGHT RAIL (VALIDATION METRICS & SYSTEM) ─── */
+        .panel-right {
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-hairline);
+            padding: 14px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-hairline) transparent;
+        }
+        .panel-right::-webkit-scrollbar { width: 4px; }
+        .panel-right::-webkit-scrollbar-thumb { background: var(--border-hairline); }
+
+        .metrics-2x2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .metric-tile {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 7px 9px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .metric-tile-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .metric-tile-name {
+            font-size: 9.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-tertiary);
+        }
+        .metric-status-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--status-nominal);
+        }
+        .metric-tile-val {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .metric-tile-target {
+            font-size: 9px;
+            color: var(--text-tertiary);
+            font-family: var(--font-mono);
+        }
+
+        /* Histogram Widget */
+        .hist-box {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .hist-canvas-wrap {
+            height: 80px;
+            width: 100%;
+        }
+        .hist-canvas-wrap canvas { width: 100%; height: 100%; }
+        .hist-axis-row {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 8.5px;
+            color: var(--text-tertiary);
+        }
+
+        /* System Info Stack */
+        .sys-stack {
+            background: var(--bg-surface-raised);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 6px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 10.5px;
+        }
+        .sys-row {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border-hairline);
+        }
+        .sys-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .sys-label {
+            font-size: 9.5px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .sys-val {
+            font-family: var(--font-mono);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ─── LIVE DISSEMINATION VIEW (SAAS FIELD MODE) ─── */
+        .saas-container {
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+            padding: 20px 24px;
+            height: calc(100vh - 40px);
+            overflow-y: auto;
+            background: var(--bg-canvas);
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .saas-active .app-container { display: none; }
+        .saas-active .saas-container { display: flex; }
+
+        .saas-banner {
+            background: rgba(229, 72, 77, 0.08);
+            border: 1px solid var(--status-severe);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .saas-banner-title {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--status-severe);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .saas-banner-sub {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .saas-player {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .saas-player-screen {
+            height: 380px;
+            background: #000000;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .saas-player-screen img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .saas-player-bar {
+            padding: 8px 14px;
+            background: var(--bg-surface-raised);
+            border-top: 1px solid var(--border-hairline);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .saas-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .saas-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-hairline);
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .saas-card-hdr { font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.04em; }
+        .saas-card-val { font-size: 18px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        .saas-card-sub { font-size: 10.5px; color: var(--text-secondary); }
+
+        /* Loading Spinner */
+        .spin-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 10, 11, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            z-index: 60;
+        }
+        .spin-overlay.hidden { display: none; }
+        .spinner-bar {
+            width: 24px; height: 24px;
+            border: 2px solid var(--border-hairline-strong);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin-msg { font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary); }
+
+        /* Modal Overlay */
+        .modal-wrap {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal-wrap.hidden { display: none; }
+        .modal-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-hairline-strong);
+            border-radius: var(--radius-sm);
+            width: 400px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .modal-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+    </style>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--                           TOP NAVIGATION BAR                               -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="top-navbar">
+    <div class="brand-section">
+        <div class="brand-logo">BLINK</div>
+        <div class="brand-badge">Aero-Interpolate</div>
+        <div class="brand-divider"></div>
+        <div class="brand-desc">Satellite Temporal Nowcasting Ground Station</div>
+    </div>
+
+    <!-- Mode Switcher -->
+    <div class="segmented-control">
+        <button class="segmented-btn active" id="tab-operator" onclick="setViewMode('operator')">Ground Station</button>
+        <button class="segmented-btn" id="tab-viewer" onclick="setViewMode('viewer')">Live Dissemination</button>
+    </div>
+
+    <!-- Live Telemetry Status -->
+    <div class="header-status">
+        <div class="status-dot"></div>
+        <span>Telemetry Stream Active</span>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--                   LIVE DISSEMINATION SCREEN (FIELD MODE)                   -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="saas-container" id="saas-viewer-screen">
+    <div class="saas-banner">
+        <div>
+            <div class="saas-banner-title">⚠️ Convective Advisory · Severe Cloudburst Probability</div>
+            <div class="saas-banner-sub">Rapid cloud-top cooling detected (-14.8 K / 15-min). High-intensity localized rain likely within 15–30 minutes.</div>
+        </div>
+        <div class="hero-badge severe">88.5% Severe</div>
+    </div>
+
+    <div class="saas-player">
+        <div class="saas-player-screen">
+            <img id="saas-view-img" src="" alt="Satellite Stream">
+        </div>
+        <div class="saas-player-bar">
+            <button class="ctrl-btn active" id="saas-play-btn" onclick="toggleAutoPlay()">▶ Play Stream</button>
+            <input type="range" id="saas-time-slider" min="0" max="15" value="0" style="flex:1;" oninput="onSaasSliderChange(this.value)">
+            <span class="playback-status-readout" id="saas-step-readout">Frame 1 / 15 (T+0m)</span>
+        </div>
+    </div>
+
+    <div class="saas-cards-grid">
+        <div class="saas-card">
+            <div class="saas-card-hdr">Interpolation Cadence</div>
+            <div class="saas-card-val" style="color:var(--data-synth);">1-Minute Stream</div>
+            <div class="saas-card-sub">Synthesizes 14 intermediate steps per 15-min scan.</div>
+        </div>
+        <div class="saas-card">
+            <div class="saas-card-hdr">Cloud-Top Temperature</div>
+            <div class="saas-card-val" style="color:var(--status-severe);">-38.4 °C</div>
+            <div class="saas-card-sub">234.8 K minimum brightness temperature.</div>
+        </div>
+        <div class="saas-card">
+            <div class="saas-card-hdr">Kinematic Drift Velocity</div>
+            <div class="saas-card-val" style="color:var(--status-caution);">102 km/h</div>
+            <div class="saas-card-sub">Translation speed of convective cloud shield.</div>
+        </div>
+        <div class="saas-card">
+            <div class="saas-card-hdr">Kinematic Model Accuracy</div>
+            <div class="saas-card-val" style="color:var(--data-synth);">0.9620 SSIM</div>
+            <div class="saas-card-sub">Structural similarity against observational reference.</div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--                   GROUND STATION WORKSTATION CONSOLE                       -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="app-container" id="operator-screen">
+
+    <!-- ─── LEFT CONTROL RAIL ─── -->
+    <div class="panel-left">
+        <div class="control-section">
+            <div class="section-heading">Data Source</div>
+            <select id="ctl-datasource" onchange="onDataSourceChange()">
+                <option value="REAL_SATELLITE">Live Satellite (NASA VIIRS / MODIS)</option>
+                <option value="MOSDAC_INSAT3DS">ISRO MOSDAC (INSAT-3DS L1B)</option>
+                <option value="simulation_cyclone" selected>Benchmark: Severe Tropical Cyclone</option>
+                <option value="simulation_cloudburst">Benchmark: Explosive Cloudburst</option>
+                <option value="upload">Custom Ingestion (HDF5 / NetCDF / PNG)</option>
+            </select>
+        </div>
+
+        <div class="control-section">
+            <div class="section-heading">Geographic Extent</div>
+            <select id="ctl-region" onchange="onRegionChange()">
+                <option value="indian_subcontinent" selected>Bay of Bengal & Peninsular India</option>
+                <option value="bay_of_bengal">Bay of Bengal Cyclone Basin</option>
+                <option value="arabian_sea">Arabian Sea Inflow</option>
+                <option value="western_ghats">Western Ghats Orographic Zone</option>
+                <option value="himalayan_foothills">Himalayan Cloudburst Corridor</option>
+            </select>
+        </div>
+
+        <div class="control-section">
+            <div class="section-heading">Spectral Channel</div>
+            <select id="ctl-band" onchange="refreshOverlays()">
+                <option value="TIR-1" selected>TIR-1 (10.8 µm Thermal IR)</option>
+                <option value="WV">WV (6.8 µm Water Vapour)</option>
+                <option value="VIS">VIS (0.65 µm Visible)</option>
+                <option value="composite">Multi-Spectral Composite (RGB)</option>
+            </select>
+        </div>
+
+        <div class="hairline-divider"></div>
+
+        <div class="control-section">
+            <div class="section-heading">Temporal Acquisition</div>
+            <div class="input-row-2col">
+                <div class="control-group">
+                    <span class="control-label">Date</span>
+                    <input type="text" id="ctl-date" value="2026-08-28" placeholder="YYYY-MM-DD">
+                </div>
+                <div class="control-group">
+                    <span class="control-label">UTC Time</span>
+                    <input type="text" id="ctl-time" value="10:00" placeholder="HH:MM">
+                </div>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <div class="section-heading">Cadence Multiplier</div>
+            <select id="ctl-procmode">
+                <option value="15" selected>15x Synthesis (15-min → 1-min)</option>
+                <option value="5">5x Synthesis (15-min → 3-min)</option>
+                <option value="3">3x Synthesis (15-min → 5-min)</option>
+            </select>
+        </div>
+
+        <div class="control-section">
+            <div class="section-heading">Direct File Ingest</div>
+            <div class="ingest-box" id="left-drop-zone">
+                <input type="file" id="file-hidden-t0" style="display:none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5,.hdf5,.nc,.nc4" onchange="onFilePicked('t0', this)">
+                <input type="file" id="file-hidden-t1" style="display:none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5,.hdf5,.nc,.nc4" onchange="onFilePicked('t1', this)">
+                <div class="ingest-row">
+                    <span class="ingest-badge">T0</span>
+                    <span class="ingest-name" id="name-file-t0">Satellite Feed (Live)</span>
+                    <button class="ingest-browse-btn" onclick="document.getElementById('file-hidden-t0').click()">Browse</button>
+                </div>
+                <div class="ingest-row">
+                    <span class="ingest-badge">T1</span>
+                    <span class="ingest-name" id="name-file-t1">Satellite Feed (Live)</span>
+                    <button class="ingest-browse-btn" onclick="document.getElementById('file-hidden-t1').click()">Browse</button>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-primary" id="btn-execute" onclick="executeSynthesis()">Run Frame Synthesis</button>
+        <button class="btn-outline" onclick="toggleMosdacModal()">Configure MOSDAC API</button>
+
+        <div class="hairline-divider"></div>
+
+        <div class="control-section">
+            <div class="section-heading">Map Overlays</div>
+            <div class="checkbox-item"><input type="checkbox" id="layer-coastline" checked onchange="refreshOverlays()"><label for="layer-coastline">Coastlines & Boundaries</label></div>
+            <div class="checkbox-item"><input type="checkbox" id="layer-grid" checked onchange="refreshOverlays()"><label for="layer-grid">Graticule Grid (5°)</label></div>
+            <div class="checkbox-item"><input type="checkbox" id="layer-stormtrack" checked onchange="refreshOverlays()"><label for="layer-stormtrack">Cyclone Track & Cone</label></div>
+            <div class="checkbox-item"><input type="checkbox" id="layer-cloudburst" checked onchange="refreshOverlays()"><label for="layer-cloudburst">NETRA Cloudburst Zones</label></div>
+            <div class="checkbox-item"><input type="checkbox" id="layer-flowvectors" onchange="refreshOverlays()"><label for="layer-flowvectors">Kinematic Velocity Vectors</label></div>
+        </div>
+
+        <div class="coords-bar">
+            <span>Probe</span>
+            <span class="coords-val" id="cursor-latlon">16.74°N, 89.21°E</span>
+        </div>
+    </div>
+
+    <!-- ─── CENTER STAGE ─── -->
+    <div class="center-stage">
+        <div class="spin-overlay hidden" id="stage-spinner">
+            <div class="spinner-bar"></div>
+            <span class="spin-msg" id="spinner-status-msg">Running Neural Kinematics & Flow Solver...</span>
+        </div>
+
+        <!-- 3-Viewport Strip -->
+        <div class="viewport-strip">
+            <div class="viewport-card" id="vp-card-t0">
+                <div class="viewport-card-header">
+                    <span id="vp-hdr-t0">T0 · 10:00:00 UTC</span>
+                    <span class="viewport-tag raw">Raw Observation</span>
+                </div>
+                <div class="viewport-canvas-container" onmousemove="handleViewportHover(event, this)">
+                    <canvas class="simulation-basemap-canvas" id="map-canvas-t0"></canvas>
+                    <img id="view-img-t0" src="" alt="T0 Satellite Frame">
+                    <canvas class="geo-overlay" id="canvas-overlay-t0"></canvas>
+                </div>
+            </div>
+
+            <div class="viewport-card" id="vp-card-t1">
+                <div class="viewport-card-header">
+                    <span id="vp-hdr-t1">T1 · 10:15:00 UTC</span>
+                    <span class="viewport-tag raw">Raw Observation</span>
+                </div>
+                <div class="viewport-canvas-container" onmousemove="handleViewportHover(event, this)">
+                    <canvas class="simulation-basemap-canvas" id="map-canvas-t1"></canvas>
+                    <img id="view-img-t1" src="" alt="T1 Satellite Frame">
+                    <canvas class="geo-overlay" id="canvas-overlay-t1"></canvas>
+                </div>
+            </div>
+
+            <div class="viewport-card synthesized-card" id="vp-card-ai">
+                <div class="viewport-card-header">
+                    <span id="vp-title-ai">Model Output · T+7m (10:07 UTC)</span>
+                    <span class="viewport-tag synth">Synthesized</span>
+                </div>
+                <div class="viewport-canvas-container" onmousemove="handleViewportHover(event, this)">
+                    <canvas class="simulation-basemap-canvas" id="map-canvas-ai"></canvas>
+                    <img id="view-img-ai" src="" alt="Model Synthesized Frame">
+                    <canvas class="geo-overlay" id="canvas-overlay-ai"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dedicated Playback Control Bar -->
+        <div class="playback-bar">
+            <div class="playback-controls-group">
+                <button class="ctrl-btn" onclick="stepTimeline(-1)">◀ Prev Step</button>
+                <button class="ctrl-btn" id="vp-play-btn" onclick="toggleAutoPlay()">▶ Play Loop</button>
+                <button class="ctrl-btn" onclick="stepTimeline(1)">Next Step ▶</button>
+            </div>
+            <div class="playback-status-readout">
+                <span>Selected Interval:</span>
+                <span class="playback-step-badge" id="playback-time-badge">10:07 UTC (Step 7 / 15)</span>
+            </div>
+        </div>
+
+        <!-- 1-Minute Scrubber Timeline -->
+        <div class="timeline-section">
+            <div class="timeline-legend-row">
+                <span class="timeline-title">Temporal Sequence (1-Minute Intervals)</span>
+                <div class="timeline-swatches">
+                    <div class="timeline-swatch-item"><div class="swatch-box raw"></div><span>Raw Observation (15-min)</span></div>
+                    <div class="timeline-swatch-item"><div class="swatch-box synth"></div><span>Synthesized Step (1-min)</span></div>
+                </div>
+            </div>
+            <div class="timeline-track-wrapper">
+                <button class="tl-scroll-btn" onclick="scrollTimelineStrip(-1)">◀</button>
+                <div class="timeline-strip-container" id="timeline-frames-track"></div>
+                <button class="tl-scroll-btn" onclick="scrollTimelineStrip(1)">▶</button>
+            </div>
+        </div>
+
+        <!-- Bottom Diagnostic Row (3 Columns) -->
+        <div class="diagnostics-grid">
+            <!-- Col 1: Kinematic Velocity Field -->
+            <div class="diag-card">
+                <div class="diag-card-header">
+                    <span class="diag-title">Atmospheric Kinematic Velocity Field</span>
+                </div>
+                <div class="diag-card-body">
+                    <div class="diag-canvas-wrapper">
+                        <canvas id="canvas-motion-field"></canvas>
+                    </div>
+                    <div class="velocity-legend-bar">
+                        <div class="velocity-bar-track"></div>
+                        <div class="velocity-ticks">
+                            <span>0 km/h</span>
+                            <span>20</span>
+                            <span>40</span>
+                            <span>65</span>
+                            <span>85+ km/h</span>
+                        </div>
+                        <div class="velocity-ticks" style="margin-top:-1px;">
+                            <span>0 m/s</span>
+                            <span id="velocity-range-readout" style="text-align:center;">Animated optical-flow streamlines</span>
+                            <span>23.6 m/s</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Col 2: Cloud-Top Temperature Cross-Section -->
+            <div class="diag-card">
+                <div class="diag-card-header">
+                    <span class="diag-title">Temperature Cross-Section (TIR-1)</span>
+                </div>
+                <div class="diag-card-body">
+                    <div class="diag-canvas-wrapper">
+                        <canvas id="canvas-temp-profile"></canvas>
+                    </div>
+                    <div class="temp-legend-bar">
+                        <div class="temp-legend-item"><div class="temp-line-indicator" style="background:#56B4E9;"></div><span>T0 (Raw)</span></div>
+                        <div class="temp-legend-item"><div class="temp-line-indicator" style="background:#2FA36B;"></div><span>Synthesized</span></div>
+                        <div class="temp-legend-item"><div class="temp-line-indicator" style="background:#E0A72E;"></div><span>T1 (Raw)</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Col 3: Nowcasting Telemetry & Severity -->
+            <div class="diag-card">
+                <div class="diag-card-header">
+                    <span class="diag-title">Nowcasting & Kinematic Telemetry</span>
+                </div>
+                <div class="diag-card-body">
+                    <div class="nowcast-content-container">
+                        <!-- North Star Hero Metric -->
+                        <div class="hero-metric-card severe" id="card-hero-threat">
+                            <div class="hero-header-row">
+                                <span class="hero-label">Cloudburst Risk (NETRA)</span>
+                                <span class="hero-badge severe" id="val-badge-threat">⚠️ Severe Alert</span>
+                            </div>
+                            <div class="hero-val-row">
+                                <span class="hero-big-number" id="val-hero-pct">88.5%</span>
+                                <span class="hero-subtext" id="val-hero-sub">dT/dt: -14.8 K/15m · 14 Overshooting Tops</span>
+                            </div>
+                        </div>
+
+                        <!-- Structured Telemetry Table (No Text Clipping) -->
+                        <table class="telemetry-grid-table">
+                            <tr><td>Cyclone Center</td><td id="val-track-center">16.74°N, 89.21°E</td></tr>
+                            <tr><td>Translation Velocity</td><td id="val-track-speed">18.5 km/h @ 315° NW</td></tr>
+                            <tr><td>Intensity Category</td><td id="val-track-cat">VSCS (135 km/h)</td></tr>
+                            <tr><td>Central Pressure</td><td id="val-track-press">964.0 hPa</td></tr>
+                            <tr><td>Landfall ETA</td><td id="val-landfall-eta">28.5 hrs (Odisha Coast)</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── RIGHT RAIL ─── -->
+    <div class="panel-right">
+        <!-- 2x2 Physical Validation Metrics -->
+        <div class="control-section">
+            <div class="section-heading">Physical Validation Metrics</div>
+            <div class="metrics-2x2">
+                <div class="metric-tile">
+                    <div class="metric-tile-header">
+                        <span class="metric-tile-name">PSNR</span>
+                        <div class="metric-status-dot"></div>
+                    </div>
+                    <span class="metric-tile-val" id="metric-psnr">36.42</span>
+                    <span class="metric-tile-target">Target ≥ 34.5 dB</span>
+                </div>
+                <div class="metric-tile">
+                    <div class="metric-tile-header">
+                        <span class="metric-tile-name">SSIM</span>
+                        <div class="metric-status-dot"></div>
+                    </div>
+                    <span class="metric-tile-val" id="metric-ssim">0.9620</span>
+                    <span class="metric-tile-target">Target ≥ 0.9400</span>
+                </div>
+                <div class="metric-tile">
+                    <div class="metric-tile-header">
+                        <span class="metric-tile-name">RMSE</span>
+                        <div class="metric-status-dot"></div>
+                    </div>
+                    <span class="metric-tile-val" id="metric-rmse">3.21 %</span>
+                    <span class="metric-tile-target">Target &lt; 4.0 %</span>
+                </div>
+                <div class="metric-tile">
+                    <div class="metric-tile-header">
+                        <span class="metric-tile-name">Temp Consist</span>
+                        <div class="metric-status-dot"></div>
+                    </div>
+                    <span class="metric-tile-val" id="metric-tc">0.9710</span>
+                    <span class="metric-tile-target">Target ≥ 0.9000</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spectral Distribution Histogram -->
+        <div class="control-section">
+            <div class="section-heading">Spectral Distribution (TIR-1)</div>
+            <div class="hist-box">
+                <div class="hist-canvas-wrap">
+                    <canvas id="canvas-histogram"></canvas>
+                </div>
+                <div class="hist-axis-row">
+                    <span>180 K</span>
+                    <span>240 K</span>
+                    <span>300 K</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- System & Hardware Stack -->
+        <div class="control-section">
+            <div class="section-heading">System Diagnostics</div>
+            <div class="sys-stack">
+                <div class="sys-row">
+                    <span class="sys-label">Hardware Environment</span>
+                    <span class="sys-val" id="sys-gpu-txt">CPU Optimized (CUDA Fallback Active)</span>
+                </div>
+                <div class="sys-row">
+                    <span class="sys-label">Interpolation Engine</span>
+                    <span class="sys-val" id="sys-model-txt">RAFT + ConvLSTM + U-Net</span>
+                </div>
+                <div class="sys-row">
+                    <span class="sys-label">Cadence Upsampling</span>
+                    <span class="sys-val" id="sys-frames-txt">15x (15-min → 1-min)</span>
+                </div>
+                <div class="sys-row">
+                    <span class="sys-label">Spatial Resolution</span>
+                    <span class="sys-val">512 × 512 × 3 Channels</span>
+                </div>
+                <div class="sys-row">
+                    <span class="sys-label">Inference Latency</span>
+                    <span class="sys-val" id="sys-latency-txt">0.82 s / frame</span>
+                </div>
+                <div class="sys-row">
+                    <span class="sys-label">Data Stream Source</span>
+                    <span class="sys-val" id="sys-output-txt">ISRO MOSDAC / NASA GIBS</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--                           MOSDAC CONFIG MODAL                              -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-wrap hidden" id="modal-mosdac">
+    <div class="modal-box">
+        <div class="modal-title">Configure ISRO MOSDAC API Credentials</div>
+        <div class="control-group">
+            <span class="control-label">MOSDAC Portal Username / Email</span>
+            <input type="text" id="cfg-mosdac-user" placeholder="researcher@example.org">
+        </div>
+        <div class="control-group">
+            <span class="control-label">API Bearer / Auth Token</span>
+            <input type="text" id="cfg-mosdac-token" placeholder="Bearer eyJhbGciOi...">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+            <button class="btn-outline" style="width:auto;" onclick="toggleMosdacModal()">Cancel</button>
+            <button class="btn-primary" style="width:auto;" onclick="saveMosdacConfig()">Save to config.json</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                               APPLICATION STATE                           */
+/* ══════════════════════════════════════════════════════════════════════════ */
+const AppState = {
+    data: null,
+    totalFramesCount: 16,
+    selectedFrameIdx: 7,
+    isPlaying: false,
+    playTimerId: null,
+    uploadedFiles: { t0: null, t1: null },
+    probeLat: 16.74,
+    probeLon: 89.21,
+    flowImageObj: null,
+};
+const simulationCloudLayerCache = new Map();
+
+const REGION_BOUNDS = {
+    indian_subcontinent: { latNorth: 25.0, latSouth: 5.0, lonWest: 75.0, lonEast: 100.0, name: "Bay of Bengal & Peninsular India" },
+    bay_of_bengal: { latNorth: 22.0, latSouth: 8.0, lonWest: 80.0, lonEast: 95.0, name: "Bay of Bengal Cyclone Basin" },
+    arabian_sea: { latNorth: 24.0, latSouth: 8.0, lonWest: 60.0, lonEast: 77.0, name: "Arabian Sea Inflow" },
+    western_ghats: { latNorth: 20.0, latSouth: 8.5, lonWest: 72.5, lonEast: 77.5, name: "Western Ghats Orographic Zone" },
+    himalayan_foothills: { latNorth: 33.0, latSouth: 26.0, lonWest: 74.0, lonEast: 90.0, name: "Himalayan Cloudburst Corridor" },
+};
+const GEO_COORDS = { ...REGION_BOUNDS.indian_subcontinent };
+const simulationMaps = {};
+
+function isSimulationSource() {
+    return document.getElementById('ctl-datasource')?.value.startsWith('simulation');
+}
+
+function getSimulationMapBounds() {
+    return [
+        [GEO_COORDS.latSouth, GEO_COORDS.lonWest],
+        [GEO_COORDS.latNorth, GEO_COORDS.lonEast],
+    ];
+}
+
+const COASTLINE_INDIA = [
+    // Gujarat / Kutch / Kathiawar
+    [24.0, 68.7], [23.5, 68.4], [22.8, 69.1], [22.3, 69.0], [21.6, 69.6], [20.8, 70.4],
+    [20.9, 71.5], [21.7, 72.3], [22.2, 72.6], [21.7, 72.7], [21.1, 72.8], [20.0, 72.7],
+    // Maharashtra / Goa / Karnataka / Kerala
+    [19.0, 72.8], [17.5, 73.2], [15.5, 73.8], [14.0, 74.3], [12.9, 74.8], [11.2, 75.8],
+    [9.9, 76.2],  [8.8, 76.6],  [8.1, 77.5],
+    // Tamil Nadu / Andhra / Odisha / Bengal (East Coast)
+    [8.4, 78.1],  [9.3, 79.1],  [10.3, 79.8], [11.5, 79.8], [13.1, 80.3], [14.0, 80.1],
+    [15.1, 80.1], [15.8, 80.8], [16.3, 81.8], [16.9, 82.3], [17.7, 83.3], [18.3, 84.1],
+    [19.2, 84.9], [19.8, 85.8], [20.3, 86.6], [20.8, 86.9], [21.4, 86.9], [21.8, 87.8],
+    [22.0, 89.0], [22.8, 88.6], [23.8, 88.3]
+];
+
+const COASTLINE_SRI_LANKA = [
+    [9.8, 80.2], [9.2, 79.8], [8.5, 79.7], [7.6, 79.8], [6.9, 79.9], [6.0, 80.2],
+    [5.9, 80.6], [6.1, 81.2], [6.9, 81.8], [7.9, 81.6], [8.7, 81.2], [9.5, 80.5], [9.8, 80.2]
+];
+
+const COASTLINE_BANGLADESH_MYANMAR = [
+    [22.0, 89.0], [22.2, 90.4], [22.8, 91.4], [21.5, 91.8], [20.7, 92.3], [19.9, 93.3],
+    [18.8, 94.0], [17.5, 94.5], [16.0, 94.2], [15.8, 95.3], [16.5, 96.3], [16.0, 97.6],
+    [14.0, 98.1], [12.0, 98.6], [9.8, 98.5]
+];
+
+const COASTLINE_ARABIAN_SEA_WEST = [
+    [24.0, 68.7], [24.8, 67.0], [25.3, 64.5], [25.2, 62.0], [25.3, 59.5],
+    [25.8, 57.0], [24.0, 57.5], [22.5, 59.8], [20.5, 58.8], [18.2, 56.5],
+    [17.0, 54.0], [15.0, 51.5], [12.8, 45.0]
+];
+
+const ISLANDS_LAKSHADWEEP = [
+    [11.7, 72.7], [10.6, 72.6], [10.1, 73.6], [8.3, 73.0]
+];
+
+const ISLANDS_MALDIVES = [
+    [6.9, 72.9], [5.3, 73.0], [4.2, 73.5], [2.1, 73.4], [0.5, 73.2]
+];
+
+const ANDAMAN_ISLANDS = [
+    [13.5, 92.9], [12.5, 92.8], [11.6, 92.7], [10.5, 92.6], [9.2, 92.8], [7.0, 93.7]
+];
+
+const LAND_POLYGON_INDIA = [
+    ...COASTLINE_INDIA,
+    [28.0, 88.0], [27.0, 85.0], [29.0, 80.0], [31.0, 77.0], [34.0, 74.5],
+    [32.0, 72.0], [28.0, 70.0], [25.0, 69.0], [24.0, 68.7]
+];
+
+const LAND_POLYGON_MYANMAR = [
+    ...COASTLINE_BANGLADESH_MYANMAR,
+    [9.8, 100.0], [28.0, 100.0], [27.0, 95.0], [24.0, 92.0], [22.0, 89.0]
+];
+
+const LAND_POLYGON_ARABIAN_PENINSULA = [
+    ...COASTLINE_ARABIAN_SEA_WEST,
+    [12.8, 40.0], [30.0, 40.0], [30.0, 60.0], [25.8, 57.0]
+];
+
+function renderGeographicBasemap(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const W = rect.width;
+    const H = rect.height;
+
+    function toCanvas(lat, lon) {
+        const x = ((lon - GEO_COORDS.lonWest) / (GEO_COORDS.lonEast - GEO_COORDS.lonWest)) * W;
+        const y = ((GEO_COORDS.latNorth - lat) / (GEO_COORDS.latNorth - GEO_COORDS.latSouth)) * H;
+        return { x, y };
+    }
+
+    // 1. Deep Ocean Bathymetric Gradient (Complete full-viewport coverage)
+    const oceanGrad = ctx.createRadialGradient(W * 0.5, H * 0.5, 10, W * 0.5, H * 0.5, Math.max(W, H) * 0.85);
+    oceanGrad.addColorStop(0.0, '#0c2340');
+    oceanGrad.addColorStop(0.4, '#071629');
+    oceanGrad.addColorStop(1.0, '#040b15');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    function drawPoly(points, fillStyle, strokeStyle, lineWidth) {
+        if (!points || points.length < 2) return;
+        ctx.beginPath();
+        const p0 = toCanvas(points[0][0], points[0][1]);
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < points.length; i++) {
+            const p = toCanvas(points[i][0], points[i][1]);
+            ctx.lineTo(p.x, p.y);
+        }
+        if (fillStyle) {
+            ctx.fillStyle = fillStyle;
+            ctx.fill();
+        }
+        if (strokeStyle) {
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = lineWidth || 1;
+            ctx.stroke();
+        }
+    }
+
+    // 2. Continental Shelf / Shallow Bathymetry Glow along coastlines
+    [COASTLINE_INDIA, COASTLINE_SRI_LANKA, COASTLINE_BANGLADESH_MYANMAR, COASTLINE_ARABIAN_SEA_WEST].forEach(coast => {
+        drawPoly(coast, null, 'rgba(18, 54, 94, 0.50)', 18);
+        drawPoly(coast, null, 'rgba(28, 78, 130, 0.35)', 8);
+    });
+
+    // 3. Continental Landmass Fills with realistic terrain tones
+    const landGradient = ctx.createLinearGradient(0, 0, 0, H);
+    landGradient.addColorStop(0.0, '#1c281e');
+    landGradient.addColorStop(0.5, '#18241b');
+    landGradient.addColorStop(1.0, '#142017');
+
+    drawPoly(LAND_POLYGON_INDIA, landGradient, null);
+    drawPoly(LAND_POLYGON_MYANMAR, '#19251c', null);
+    drawPoly(LAND_POLYGON_ARABIAN_PENINSULA, '#26241c', null);
+    drawPoly(COASTLINE_SRI_LANKA, '#1b261d', null);
+
+    // 4. Western Ghats / Elevation Ridge Shader
+    if (GEO_COORDS.lonWest <= 77 && GEO_COORDS.lonEast >= 72) {
+        ctx.beginPath();
+        const ghats = [[20.5, 73.5], [19.0, 73.4], [17.5, 73.8], [15.5, 74.2], [13.5, 75.2], [11.0, 76.5], [8.5, 77.3]];
+        const g0 = toCanvas(ghats[0][0], ghats[0][1]);
+        ctx.moveTo(g0.x, g0.y);
+        for (let i = 1; i < ghats.length; i++) {
+            const pt = toCanvas(ghats[i][0], ghats[i][1]);
+            ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.strokeStyle = 'rgba(46, 68, 48, 0.7)';
+        ctx.lineWidth = 10;
+        ctx.stroke();
+    }
+
+    // 5. Himalayan Snow/Elevation Ridge Shader
+    if (GEO_COORDS.latNorth >= 26) {
+        ctx.beginPath();
+        const himalayas = [[34.5, 74.0], [32.0, 78.0], [29.5, 82.0], [28.0, 86.0], [27.5, 90.0], [28.0, 95.0]];
+        const h0 = toCanvas(himalayas[0][0], himalayas[0][1]);
+        ctx.moveTo(h0.x, h0.y);
+        for (let i = 1; i < himalayas.length; i++) {
+            const pt = toCanvas(himalayas[i][0], himalayas[i][1]);
+            ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.strokeStyle = 'rgba(78, 92, 80, 0.65)';
+        ctx.lineWidth = 14;
+        ctx.stroke();
+    }
+
+    // 6. Crisp Vector Coastlines
+    [COASTLINE_INDIA, COASTLINE_SRI_LANKA, COASTLINE_BANGLADESH_MYANMAR, COASTLINE_ARABIAN_SEA_WEST].forEach(coast => {
+        drawPoly(coast, null, 'rgba(150, 185, 220, 0.75)', 1.2);
+    });
+
+    // 7. Island Clusters
+    [ISLANDS_LAKSHADWEEP, ISLANDS_MALDIVES, ANDAMAN_ISLANDS].forEach(islandGroup => {
+        islandGroup.forEach(coord => {
+            const p = toCanvas(coord[0], coord[1]);
+            if (p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#96b9dc';
+                ctx.fill();
+            }
+        });
+    });
+
+    // 8. Graticule Lat/Lon Grid lines & Coordinate Labels
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 0.8;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.40)';
+    ctx.font = '9px monospace';
+
+    const latMin = Math.ceil(GEO_COORDS.latSouth / 5) * 5;
+    const latMax = Math.floor(GEO_COORDS.latNorth / 5) * 5;
+    for (let lat = latMin; lat <= latMax; lat += 5) {
+        const p = toCanvas(lat, GEO_COORDS.lonWest);
+        ctx.beginPath();
+        ctx.moveTo(0, p.y);
+        ctx.lineTo(W, p.y);
+        ctx.stroke();
+        ctx.fillText(`${lat}°N`, 4, p.y - 3);
+    }
+
+    const lonMin = Math.ceil(GEO_COORDS.lonWest / 5) * 5;
+    const lonMax = Math.floor(GEO_COORDS.lonEast / 5) * 5;
+    for (let lon = lonMin; lon <= lonMax; lon += 5) {
+        const p = toCanvas(GEO_COORDS.latNorth, lon);
+        ctx.beginPath();
+        ctx.moveTo(p.x, 0);
+        ctx.lineTo(p.x, H);
+        ctx.stroke();
+        ctx.fillText(`${lon}°E`, p.x + 3, H - 4);
+    }
+}
+
+function setSimulationMapMode(enabled) {
+    ['t0', 't1', 'ai'].forEach(viewId => {
+        const container = document.getElementById(`map-canvas-${viewId}`)?.parentElement;
+        if (!container) return;
+        container.classList.toggle('simulation-map-active', enabled);
+        if (enabled) {
+            renderGeographicBasemap(`map-canvas-${viewId}`);
+        }
+    });
+}
+
+const STORM_TRACK_POINTS = [
+    [15.2, 91.5], [15.8, 90.6], [16.74, 89.21], [17.8, 87.9], [18.9, 86.8], [20.1, 85.9], [21.4, 85.2]
+];
+
+const CONVECTIVE_CELLS = [
+    { lat: 17.1, lon: 89.6, r: 24, prob: 92, rate: -16.2 },
+    { lat: 15.9, lon: 88.4, r: 18, prob: 78, rate: -11.5 },
+    { lat: 18.2, lon: 87.3, r: 14, prob: 64, rate: -8.7 },
+];
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                               FILE INGESTION                              */
+/* ══════════════════════════════════════════════════════════════════════════ */
+function onFilePicked(slot, input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        AppState.uploadedFiles[slot] = file;
+        document.getElementById(`name-file-${slot}`).textContent = file.name;
+        document.getElementById('ctl-datasource').value = 'upload';
+        if (AppState.uploadedFiles.t0 && AppState.uploadedFiles.t1) {
+            executeSynthesis();
+        }
+    }
+}
+
+function onDataSourceChange() {
+    simulationCloudLayerCache.clear();
+    const src = document.getElementById('ctl-datasource').value;
+    setSimulationMapMode(src.startsWith('simulation'));
+    if (src !== 'upload') {
+        AppState.uploadedFiles.t0 = null;
+        AppState.uploadedFiles.t1 = null;
+        document.getElementById('name-file-t0').textContent = src === 'MOSDAC_INSAT3DS' ? 'INSAT-3DS (MOSDAC)' : (src.startsWith('simulation') ? 'Synthetic Stream' : 'Satellite Feed (Live)');
+        document.getElementById('name-file-t1').textContent = src === 'MOSDAC_INSAT3DS' ? 'INSAT-3DS (MOSDAC)' : (src.startsWith('simulation') ? 'Synthetic Stream' : 'Satellite Feed (Live)');
+        executeSynthesis();
+    }
+}
+
+function onRegionChange() {
+    simulationCloudLayerCache.clear();
+    const regKey = document.getElementById('ctl-region').value;
+    const b = REGION_BOUNDS[regKey] || REGION_BOUNDS.indian_subcontinent;
+    GEO_COORDS.latNorth = b.latNorth;
+    GEO_COORDS.latSouth = b.latSouth;
+    GEO_COORDS.lonWest = b.lonWest;
+    GEO_COORDS.lonEast = b.lonEast;
+    if (isSimulationSource()) {
+        setSimulationMapMode(true);
+    }
+    executeSynthesis();
+}
+
+function toggleMosdacModal() {
+    document.getElementById('modal-mosdac').classList.toggle('hidden');
+}
+
+async function saveMosdacConfig() {
+    const user = document.getElementById('cfg-mosdac-user').value.trim();
+    const token = document.getElementById('cfg-mosdac-token').value.trim();
+    if (!user || !token) {
+        alert('Please enter both username and token.');
+        return;
+    }
+    try {
+        const res = await fetch('/v1/config/mosdac', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user, api_token: token }),
+        });
+        const d = await res.json();
+        alert(d.message || 'MOSDAC credentials saved.');
+        toggleMosdacModal();
+    } catch (err) {
+        alert('Failed to save MOSDAC credentials: ' + err);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                               SYNTHESIS RUN                               */
+/* ══════════════════════════════════════════════════════════════════════════ */
+async function executeSynthesis() {
+    simulationCloudLayerCache.clear();
+    const btn = document.getElementById('btn-execute');
+    const spinner = document.getElementById('stage-spinner');
+    
+    btn.classList.add('loading');
+    btn.textContent = 'Processing...';
+    spinner.classList.remove('hidden');
+
+    try {
+        const src = document.getElementById('ctl-datasource').value;
+        const regKey = document.getElementById('ctl-region').value;
+        const dateStr = document.getElementById('ctl-date').value || '2026-08-28';
+        const timeStr = document.getElementById('ctl-time').value || '10:00';
+        const steps = parseInt(document.getElementById('ctl-procmode').value, 10);
+        let resultData;
+
+        if (src === 'upload' && AppState.uploadedFiles.t0 && AppState.uploadedFiles.t1) {
+            const fd = new FormData();
+            fd.append('file_t0', AppState.uploadedFiles.t0);
+            fd.append('file_t1', AppState.uploadedFiles.t1);
+            fd.append('cadence_steps', steps);
+            const res = await fetch('/v1/interpolate/upload', { method: 'POST', body: fd });
+            resultData = await res.json();
+        } else {
+            let payload = {
+                source: src,
+                date: dateStr,
+                time: timeStr,
+                region: regKey,
+                cadence_steps: steps,
+                grid_size: 512,
+            };
+            if (src.startsWith('simulation')) {
+                payload.scenario = src.includes('cloudburst') ? 'cloudburst' : 'cyclone';
+                payload.source = 'simulation';
+            }
+            const res = await fetch('/v1/fetch/realtime', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            resultData = await res.json();
+        }
+
+        AppState.data = resultData;
+        AppState.totalFramesCount = resultData.synthesized_frames.length + 2;
+        AppState.selectedFrameIdx = Math.floor(AppState.totalFramesCount / 2);
+
+        if (resultData.flow_visualization_base64) {
+            AppState.flowImageObj = new Image();
+            AppState.flowImageObj.src = 'data:image/png;base64,' + resultData.flow_visualization_base64;
+            AppState.flowImageObj.onload = () => drawMotionField();
+        }
+
+        renderViewports();
+        buildTimelineStrip();
+        selectTimelineFrame(AppState.selectedFrameIdx);
+        updateTelemetryMetrics(resultData.metrics);
+        updateNowcastingTelemetry(resultData);
+        updateSystemDiagnostics(resultData);
+        scheduleDiagnosticsRender();
+
+    } catch (err) {
+        console.error('Synthesis execution failed:', err);
+    } finally {
+        btn.classList.remove('loading');
+        btn.textContent = 'Run Frame Synthesis';
+        spinner.classList.add('hidden');
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                            VIEWPORT & TIMELINE                            */
+/* ══════════════════════════════════════════════════════════════════════════ */
+function getFrameBase64(idx) {
+    if (!AppState.data) return '';
+    if (idx === 0) return 'data:image/png;base64,' + AppState.data.t0_base64;
+    if (idx === AppState.totalFramesCount - 1) return 'data:image/png;base64,' + AppState.data.t1_base64;
+    return 'data:image/png;base64,' + AppState.data.synthesized_frames[idx - 1];
+}
+
+function makeSimulationCloudLayer(rawFrame, done) {
+    if (simulationCloudLayerCache.has(rawFrame)) {
+        done(simulationCloudLayerCache.get(rawFrame));
+        return;
+    }
+    const source = new Image();
+    source.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = source.naturalWidth;
+        canvas.height = source.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(source, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = imageData.data;
+        for (let i = 0; i < pixels.length; i += 4) {
+            const luminance = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+            // Clear skies (dark ocean/land, luminance < 45) get alpha = 0 for 100% map visibility.
+            // Convective storm clouds (luminance >= 45) smoothly transition up to 0.90 opacity.
+            if (luminance < 45) {
+                pixels[i + 3] = 0;
+            } else {
+                const norm = Math.min(1.0, (luminance - 45) / 200.0);
+                const alpha = Math.round(Math.pow(norm, 1.25) * 230);
+                pixels[i + 3] = Math.max(0, Math.min(255, alpha));
+            }
+        }
+        ctx.putImageData(imageData, 0, 0);
+        const layer = canvas.toDataURL('image/png');
+        simulationCloudLayerCache.set(rawFrame, layer);
+        done(layer);
+    };
+    source.onerror = () => done(rawFrame);
+    source.src = rawFrame;
+}
+
+function setViewportFrame(imageId, frameIndex, onload) {
+    const image = document.getElementById(imageId);
+    const rawFrame = getFrameBase64(frameIndex);
+    image.onload = onload || null;
+    if (!isSimulationSource()) {
+        image.src = rawFrame;
+        return;
+    }
+    makeSimulationCloudLayer(rawFrame, layer => { image.src = layer; });
+}
+
+function getFrameTimeString(idx) {
+    const timeStr = document.getElementById('ctl-time')?.value || '10:00';
+    const [baseHour, baseMin] = timeStr.split(':').map(n => parseInt(n, 10) || 0);
+    const totalMinutes = 15;
+    const currentMin = Math.round((idx / (AppState.totalFramesCount - 1)) * totalMinutes);
+    const totalMin = baseMin + currentMin;
+    const h = (baseHour + Math.floor(totalMin / 60)) % 24;
+    const m = totalMin % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
+function renderViewports() {
+    setSimulationMapMode(isSimulationSource());
+    setViewportFrame('view-img-t0', 0);
+    setViewportFrame('view-img-t1', AppState.totalFramesCount - 1);
+    document.getElementById('vp-hdr-t0').textContent = `T0 · ${getFrameTimeString(0)}:00 UTC`;
+    document.getElementById('vp-hdr-t1').textContent = `T1 · ${getFrameTimeString(AppState.totalFramesCount - 1)}:00 UTC`;
+    syncSaasViewer();
+    setTimeout(refreshOverlays, 80);
+}
+
+function selectTimelineFrame(idx) {
+    AppState.selectedFrameIdx = idx;
+    const aiImg = document.getElementById('view-img-ai');
+    setViewportFrame('view-img-ai', idx, scheduleDiagnosticsRender);
+    
+    const isInput = idx === 0 || idx === AppState.totalFramesCount - 1;
+    const labelPrefix = isInput ? 'Observation' : `Model Output · T+${Math.round((idx / (AppState.totalFramesCount - 1)) * 15)}m`;
+    const fullTitle = `${labelPrefix} (${getFrameTimeString(idx)} UTC)`;
+    document.getElementById('vp-title-ai').textContent = fullTitle;
+    document.getElementById('playback-time-badge').textContent = `${getFrameTimeString(idx)} UTC (Step ${idx} / ${AppState.totalFramesCount - 1})`;
+
+    document.querySelectorAll('.tl-item').forEach((el, i) => {
+        el.classList.toggle('selected', i === idx);
+    });
+
+    syncSaasViewer();
+    refreshOverlays();
+
+    // Synchronize atmospheric kinematic flow field with the selected frame timestep
+    if (MotionFieldState.lastCanvasW > 0 && MotionFieldState.lastCanvasH > 0) {
+        MotionFieldState.flowSampler = buildFlowSampler(MotionFieldState.lastCanvasW, MotionFieldState.lastCanvasH);
+        if (!AppState.isPlaying) {
+            MotionFieldState.isPaused = true;
+            renderStaticMotionFrame();
+        }
+    }
+    scheduleDiagnosticsRender();
+}
+
+function buildTimelineStrip() {
+    const track = document.getElementById('timeline-frames-track');
+    track.innerHTML = '';
+
+    for (let i = 0; i < AppState.totalFramesCount; i++) {
+        const isInput = i === 0 || i === AppState.totalFramesCount - 1;
+        const frameDiv = document.createElement('div');
+        frameDiv.className = 'tl-item' + (i === AppState.selectedFrameIdx ? ' selected' : '');
+        frameDiv.onclick = () => selectTimelineFrame(i);
+
+        const img = document.createElement('img');
+        img.className = 'tl-thumb';
+        img.src = getFrameBase64(i);
+        frameDiv.appendChild(img);
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'tl-time';
+        timeSpan.textContent = getFrameTimeString(i);
+        frameDiv.appendChild(timeSpan);
+
+        const dot = document.createElement('span');
+        dot.className = 'tl-indicator';
+        dot.style.background = isInput ? 'var(--data-raw)' : 'var(--data-synth)';
+        frameDiv.appendChild(dot);
+
+        track.appendChild(frameDiv);
+    }
+}
+
+function scrollTimelineStrip(dir) {
+    document.getElementById('timeline-frames-track').scrollBy({ left: dir * 180, behavior: 'smooth' });
+}
+
+function stepTimeline(dir) {
+    let next = AppState.selectedFrameIdx + dir;
+    if (next < 0) next = AppState.totalFramesCount - 1;
+    if (next >= AppState.totalFramesCount) next = 0;
+    selectTimelineFrame(next);
+}
+
+function toggleAutoPlay() {
+    AppState.isPlaying = !AppState.isPlaying;
+    const btn = document.getElementById('vp-play-btn');
+    const saasBtn = document.getElementById('saas-play-btn');
+    if (AppState.isPlaying) {
+        btn.textContent = '⏸ Pause';
+        btn.classList.add('active');
+        if (saasBtn) saasBtn.textContent = '⏸ Pause';
+        AppState.playTimerId = setInterval(() => {
+            let next = AppState.selectedFrameIdx + 1;
+            if (next >= AppState.totalFramesCount) next = 0;
+            selectTimelineFrame(next);
+        }, 320);
+        // Resume kinematic particle animation in sync with playback
+        resumeMotionFieldAnimation();
+    } else {
+        btn.textContent = '▶ Play Loop';
+        btn.classList.remove('active');
+        if (saasBtn) saasBtn.textContent = '▶ Play Stream';
+        clearInterval(AppState.playTimerId);
+        // Freeze kinematic particle animation when paused
+        pauseMotionFieldAnimation();
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                              GEOGRAPHIC OVERLAYS                          */
+/* ══════════════════════════════════════════════════════════════════════════ */
+function refreshOverlays() {
+    ['canvas-overlay-t0', 'canvas-overlay-t1', 'canvas-overlay-ai'].forEach(id => {
+        const canvas = document.getElementById(id);
+        if (!canvas || !canvas.parentElement) return;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * 2;
+        canvas.height = rect.height * 2;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.scale(2, 2);
+        const w = rect.width, h = rect.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const showGrid = document.getElementById('layer-grid').checked;
+        const showCoast = document.getElementById('layer-coastline').checked;
+        const showTrack = document.getElementById('layer-stormtrack').checked;
+        const showCloudburst = document.getElementById('layer-cloudburst').checked;
+
+        if (showGrid) drawGraticuleGrid(ctx, w, h);
+        // OpenStreetMap supplies accurate coastline and political-boundary context
+        // for simulations; retain the legacy linework for non-simulation displays.
+        if (showCoast && !isSimulationSource()) drawSubcontinentCoastline(ctx, w, h);
+        if (showTrack) drawStormTrackAndCone(ctx, w, h);
+        if (showCloudburst) drawCloudburstThreatZones(ctx, w, h);
+        drawBorderCoordinateLabels(ctx, w, h);
+    });
+}
+
+function geoToPixel(lat, lon, width, height) {
+    const x = ((lon - GEO_COORDS.lonWest) / (GEO_COORDS.lonEast - GEO_COORDS.lonWest)) * width;
+    const y = ((GEO_COORDS.latNorth - lat) / (GEO_COORDS.latNorth - GEO_COORDS.latSouth)) * height;
+    return [x, y];
+}
+
+function drawGraticuleGrid(ctx, w, h) {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 0.5;
+
+    for (let lat = GEO_COORDS.latSouth; lat <= GEO_COORDS.latNorth; lat += 5) {
+        const [, y] = geoToPixel(lat, GEO_COORDS.lonWest, w, h);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    for (let lon = GEO_COORDS.lonWest; lon <= GEO_COORDS.lonEast; lon += 5) {
+        const [x] = geoToPixel(GEO_COORDS.latNorth, lon, w, h);
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+}
+
+function drawSubcontinentCoastline(ctx, w, h) {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.70)';
+    ctx.lineWidth = 0.8;
+
+    [COASTLINE_INDIA, COASTLINE_SRI_LANKA, COASTLINE_BANGLADESH_MYANMAR, COASTLINE_ARABIAN_SEA_WEST].forEach(poly => {
+        ctx.beginPath();
+        poly.forEach((pt, idx) => {
+            const [x, y] = geoToPixel(pt[0], pt[1], w, h);
+            idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    });
+
+    [ISLANDS_LAKSHADWEEP, ISLANDS_MALDIVES, ANDAMAN_ISLANDS].forEach(islandGroup => {
+        islandGroup.forEach(coord => {
+            const [x, y] = geoToPixel(coord[0], coord[1], w, h);
+            if (x >= 0 && x <= w && y >= 0 && y <= h) {
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.fill();
+            }
+        });
+    });
+}
+
+function drawStormTrackAndCone(ctx, w, h) {
+    const track = AppState.data?.storm_track;
+    if (!track) return;
+    const pts = (track.forecast_waypoints || []).map(p => geoToPixel(p.lat, p.lon, w, h));
+    if (pts.length < 2) return;
+
+    // Uncertainty cone
+    ctx.fillStyle = 'rgba(224, 167, 46, 0.12)';
+    ctx.strokeStyle = 'rgba(224, 167, 46, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+
+    const conePoly = (track.cone_polygon_coords || []).map(p => geoToPixel(p[0], p[1], w, h));
+    if (conePoly.length < 3) return;
+    conePoly.forEach((pt, i) => i === 0 ? ctx.moveTo(pt[0], pt[1]) : ctx.lineTo(pt[0], pt[1]));
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Central trajectory line
+    ctx.strokeStyle = '#E0A72E';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    pts.forEach((pt, i) => i === 0 ? ctx.moveTo(pt[0], pt[1]) : ctx.lineTo(pt[0], pt[1]));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Eye indicator
+    const currentEye = geoToPixel(track.current_center_lat, track.current_center_lon, w, h);
+    ctx.strokeStyle = '#E5484D';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(currentEye[0], currentEye[1], 6, 0, Math.PI * 2);
+    ctx.stroke();
+}
+
+function drawCloudburstThreatZones(ctx, w, h) {
+    const clusters = AppState.data?.convective_nowcast?.active_threat_clusters || [];
+    clusters.forEach(cell => {
+        const [cx, cy] = geoToPixel(cell.centroid_lat, cell.centroid_lon, w, h);
+        const bounds = cell.bounding_box;
+        const [x0, y0] = geoToPixel(bounds.min_lat, bounds.min_lon, w, h);
+        const [x1, y1] = geoToPixel(bounds.max_lat, bounds.max_lon, w, h);
+        ctx.strokeStyle = '#E5484D';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+
+        ctx.font = '8px "JetBrains Mono"';
+        ctx.fillStyle = '#E5484D';
+        ctx.fillText(`NETRA ${cell.cloudburst_probability_pct}%`, cx + 4, cy - 4);
+    });
+}
+
+function drawBorderCoordinateLabels(ctx, w, h) {
+    ctx.font = '7.5px "JetBrains Mono"';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.fillText(`${GEO_COORDS.latNorth}°N`, 4, 10);
+    ctx.fillText(`${GEO_COORDS.latSouth}°N`, 4, h - 4);
+    ctx.fillText(`${GEO_COORDS.lonWest}°E`, 12, h - 4);
+    ctx.fillText(`${GEO_COORDS.lonEast}°E`, w - 32, h - 4);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                    METEOROLOGICAL MOTION & KINEMATIC FIELD                 */
+/*    Animated particle streamlines (Windy.com / IMD / ECMWF dashboard       */
+/*    style) with spec-correct 4-stop velocity colormap per BLINK ref doc.   */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Persistent animated particle system state ── */
+const MotionFieldState = {
+    particles: [],
+    numParticles: 2800,
+    maxAge: 55,
+    speedScale: 0.45,
+    animFrameId: null,
+    lastCanvasW: 0,
+    lastCanvasH: 0,
+    flowSampler: null,
+    maxSpeedKmh: 85.0,
+    coastlineRendered: false,
+    backgroundCanvas: null,
+    isPaused: true,          // Starts paused; syncs with AppState.isPlaying
+    needsStaticRender: true, // Flag to draw one static frame on init / frame change
+};
+
+function scheduleDiagnosticsRender() {
+    // Run after layout as these canvases live in flex/grid panels whose dimensions
+    // are not guaranteed to be available at image-load time.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        initMotionFieldAnimation();
+        drawTemperatureProfile();
+        drawHistogramChart();
+    }));
+}
+
+/* ── Meteorological velocity colormap (spec: Navy→Cyan→Green→Gold→Red) ── */
+function getMeteorologicalVelocityRGBA(t, alpha) {
+    t = Math.max(0, Math.min(1, t));
+    let r, g, b;
+    if (t < 0.25) {
+        // 0–40 km/h: Dark Navy → Cyan
+        const f = t / 0.25;
+        r = 8 + (6 - 8) * f;
+        g = 16 + (182 - 16) * f;
+        b = 32 + (212 - 32) * f;
+    } else if (t < 0.5) {
+        // 40–65 km/h: Cyan → Emerald Green
+        const f = (t - 0.25) / 0.25;
+        r = 6 + (16 - 6) * f;
+        g = 182 + (185 - 182) * f;
+        b = 212 + (129 - 212) * f;
+    } else if (t < 0.75) {
+        // 65–85 km/h: Green → Amber Gold
+        const f = (t - 0.5) / 0.25;
+        r = 16 + (245 - 16) * f;
+        g = 185 + (158 - 185) * f;
+        b = 129 + (11 - 129) * f;
+    } else {
+        // >85 km/h: Gold → Coral Red
+        const f = (t - 0.75) / 0.25;
+        r = 245 + (239 - 245) * f;
+        g = 158 + (68 - 158) * f;
+        b = 11 + (68 - 11) * f;
+    }
+    return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`;
+}
+
+function getTimelineNormalizedTime() {
+    if (!AppState.totalFramesCount || AppState.totalFramesCount <= 1) return 0.5;
+    return Math.max(0, Math.min(1, AppState.selectedFrameIdx / (AppState.totalFramesCount - 1)));
+}
+
+/* ── Build a flow sampler from API flow grid or synthetic vortex ── */
+/* ── Build a flow sampler from API flow grid or synthetic vortex ── */
+function buildFlowSampler(w, h) {
+    const t_norm = getTimelineNormalizedTime();
+    const regKey = document.getElementById('ctl-region')?.value || 'indian_subcontinent';
+    const regName = REGION_BOUNDS[regKey]?.name || 'Regional Streamlines';
+    const flowGrid = AppState.data?.diagnostics?.flow_grid_pixels;
+    
+    if (flowGrid?.u?.length && flowGrid?.v?.length) {
+        const rows = flowGrid.u.length, cols = flowGrid.u[0].length;
+        const magnitudes = [];
+        for (let gy = 0; gy < rows; gy++)
+            for (let gx = 0; gx < cols; gx++)
+                magnitudes.push(Math.hypot(flowGrid.u[gy][gx], flowGrid.v[gy][gx]));
+        const maxMag = Math.max(...magnitudes, 0.01);
+        const rangeReadout = document.getElementById('velocity-range-readout');
+        if (rangeReadout) {
+            const maxKmh = (maxMag * MotionFieldState.maxSpeedKmh / maxMag).toFixed(1);
+            const maxMs = (maxKmh / 3.6).toFixed(1);
+            rangeReadout.textContent = `Peak: ${maxKmh} km/h (${maxMs} m/s) · ${regName} · T+${Math.round(t_norm * 15)}m`;
+        }
+        return (px, py) => {
+            const gx = Math.max(0, Math.min(cols - 1, (px / w) * (cols - 1)));
+            const gy = Math.max(0, Math.min(rows - 1, (py / h) * (rows - 1)));
+            const x0 = Math.floor(gx), y0 = Math.floor(gy);
+            const x1 = Math.min(cols - 1, x0 + 1), y1 = Math.min(rows - 1, y0 + 1);
+            const tx = gx - x0, ty = gy - y0;
+            const lerp = (v) => (v[y0][x0]*(1-tx)+v[y0][x1]*tx)*(1-ty) + (v[y1][x0]*(1-tx)+v[y1][x1]*tx)*ty;
+            const u = lerp(flowGrid.u);
+            const v = lerp(flowGrid.v);
+            const mag = Math.hypot(u, v);
+            return { u: u / maxMag * w * 0.018, v: v / maxMag * h * 0.018, speed: mag / maxMag };
+        };
+    }
+
+    // Fallback: dynamic vortex translating in sync with region and current timeline frame t_norm
+    const isCloudburst = document.getElementById('ctl-datasource')?.value.includes('cloudburst') || regKey === 'himalayan_foothills';
+    let cxN, cyN;
+    if (isCloudburst) {
+        cxN = 0.50 + 0.04 * t_norm;
+        cyN = 0.50 - 0.02 * t_norm;
+    } else if (regKey === 'arabian_sea') {
+        cxN = 0.46 + 0.025 * t_norm;
+        cyN = 0.52 - 0.018 * t_norm;
+    } else if (regKey === 'western_ghats') {
+        cxN = 0.38 + 0.022 * t_norm;
+        cyN = 0.50 - 0.008 * t_norm;
+    } else {
+        cxN = 0.54 + (-0.028) * t_norm;
+        cyN = 0.46 + (-0.015) * t_norm;
+    }
+
+    const rangeReadout = document.getElementById('velocity-range-readout');
+    if (rangeReadout) rangeReadout.textContent = `${regName} (85 km/h peak) · T+${Math.round(t_norm * 15)}m`;
+
+    return (px, py) => {
+        const nx = (px / w - cxN) * 2.0;
+        const ny = (py / h - cyN) * 2.0;
+        const r = Math.sqrt(nx*nx + ny*ny) + 1e-4;
+        const rMaxWind = 0.22;
+        const vTan = r < rMaxWind ? (r / rMaxWind) : Math.pow(rMaxWind / r, 0.55);
+        const angle = Math.atan2(ny, nx) + Math.PI / 2 - 0.25;
+        const speed = vTan * Math.exp(-0.5 * Math.pow((r - rMaxWind) / 0.25, 2)) + 0.08 * (1.0 - r * 0.6);
+        const spdClamped = Math.max(0.02, Math.min(1.0, speed));
+        const mag = spdClamped * 8.0;
+        return { u: Math.cos(angle) * mag, v: Math.sin(angle) * mag, speed: spdClamped };
+    };
+}
+
+/* ── Render static background: dark ocean gradient + landmass + coastline for selected region ── */
+function renderMotionFieldBackground(w, h) {
+    const bgCanvas = document.createElement('canvas');
+    bgCanvas.width = w * 2;
+    bgCanvas.height = h * 2;
+    const bgCtx = bgCanvas.getContext('2d');
+    bgCtx.scale(2, 2);
+
+    function toCanvas(lat, lon) {
+        const x = ((lon - GEO_COORDS.lonWest) / (GEO_COORDS.lonEast - GEO_COORDS.lonWest)) * w;
+        const y = ((GEO_COORDS.latNorth - lat) / (GEO_COORDS.latNorth - GEO_COORDS.latSouth)) * h;
+        return { x, y };
+    }
+
+    // 1. Deep ocean bathymetric gradient
+    const grad = bgCtx.createRadialGradient(w * 0.5, h * 0.5, 10, w * 0.5, h * 0.5, Math.max(w, h) * 0.8);
+    grad.addColorStop(0, '#0a1a30');
+    grad.addColorStop(0.5, '#061120');
+    grad.addColorStop(1, '#030812');
+    bgCtx.fillStyle = grad;
+    bgCtx.fillRect(0, 0, w, h);
+
+    // 2. Landmass polygons
+    function drawPoly(points, fillStyle, strokeStyle, lineWidth) {
+        if (!points || points.length < 2) return;
+        bgCtx.beginPath();
+        const p0 = toCanvas(points[0][0], points[0][1]);
+        bgCtx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < points.length; i++) {
+            const p = toCanvas(points[i][0], points[i][1]);
+            bgCtx.lineTo(p.x, p.y);
+        }
+        if (fillStyle) {
+            bgCtx.fillStyle = fillStyle;
+            bgCtx.fill();
+        }
+        if (strokeStyle) {
+            bgCtx.strokeStyle = strokeStyle;
+            bgCtx.lineWidth = lineWidth || 1;
+            bgCtx.stroke();
+        }
+    }
+
+    drawPoly(LAND_POLYGON_INDIA, '#121e15', null);
+    drawPoly(LAND_POLYGON_MYANMAR, '#121e15', null);
+    drawPoly(LAND_POLYGON_ARABIAN_PENINSULA, '#1e1c15', null);
+    drawPoly(COASTLINE_SRI_LANKA, '#121e15', null);
+
+    // 3. Western Ghats / Himalayan ridge shading
+    if (GEO_COORDS.lonWest <= 77 && GEO_COORDS.lonEast >= 72) {
+        bgCtx.beginPath();
+        const ghats = [[20.5, 73.5], [19.0, 73.4], [17.5, 73.8], [15.5, 74.2], [13.5, 75.2], [11.0, 76.5], [8.5, 77.3]];
+        const g0 = toCanvas(ghats[0][0], ghats[0][1]);
+        bgCtx.moveTo(g0.x, g0.y);
+        for (let i = 1; i < ghats.length; i++) {
+            const pt = toCanvas(ghats[i][0], ghats[i][1]);
+            bgCtx.lineTo(pt.x, pt.y);
+        }
+        bgCtx.strokeStyle = 'rgba(38, 58, 40, 0.6)';
+        bgCtx.lineWidth = 6;
+        bgCtx.stroke();
+    }
+
+    if (GEO_COORDS.latNorth >= 26) {
+        bgCtx.beginPath();
+        const himalayas = [[34.5, 74.0], [32.0, 78.0], [29.5, 82.0], [28.0, 86.0], [27.5, 90.0], [28.0, 95.0]];
+        const h0 = toCanvas(himalayas[0][0], himalayas[0][1]);
+        bgCtx.moveTo(h0.x, h0.y);
+        for (let i = 1; i < himalayas.length; i++) {
+            const pt = toCanvas(himalayas[i][0], himalayas[i][1]);
+            bgCtx.lineTo(pt.x, pt.y);
+        }
+        bgCtx.strokeStyle = 'rgba(60, 75, 62, 0.55)';
+        bgCtx.lineWidth = 8;
+        bgCtx.stroke();
+    }
+
+    // 4. Vector Coastlines
+    [COASTLINE_INDIA, COASTLINE_SRI_LANKA, COASTLINE_BANGLADESH_MYANMAR, COASTLINE_ARABIAN_SEA_WEST].forEach(coast => {
+        drawPoly(coast, null, 'rgba(140, 180, 220, 0.70)', 1.0);
+    });
+
+    // 5. Islands
+    [ISLANDS_LAKSHADWEEP, ISLANDS_MALDIVES, ANDAMAN_ISLANDS].forEach(islandGroup => {
+        islandGroup.forEach(coord => {
+            const p = toCanvas(coord[0], coord[1]);
+            if (p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h) {
+                bgCtx.beginPath();
+                bgCtx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                bgCtx.fillStyle = '#8cb4dc';
+                bgCtx.fill();
+            }
+        });
+    });
+
+    // 6. Graticule Lat/Lon Grid lines & Labels
+    bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    bgCtx.lineWidth = 0.6;
+    bgCtx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    bgCtx.font = '8px monospace';
+
+    const latMin = Math.ceil(GEO_COORDS.latSouth / 5) * 5;
+    const latMax = Math.floor(GEO_COORDS.latNorth / 5) * 5;
+    for (let lat = latMin; lat <= latMax; lat += 5) {
+        const p = toCanvas(lat, GEO_COORDS.lonWest);
+        bgCtx.beginPath();
+        bgCtx.moveTo(0, p.y);
+        bgCtx.lineTo(w, p.y);
+        bgCtx.stroke();
+        bgCtx.fillText(`${lat}°N`, 3, p.y - 2);
+    }
+
+    const lonMin = Math.ceil(GEO_COORDS.lonWest / 5) * 5;
+    const lonMax = Math.floor(GEO_COORDS.lonEast / 5) * 5;
+    for (let lon = lonMin; lon <= lonMax; lon += 5) {
+        const p = toCanvas(GEO_COORDS.latNorth, lon);
+        bgCtx.beginPath();
+        bgCtx.moveTo(p.x, 0);
+        bgCtx.lineTo(p.x, h);
+        bgCtx.stroke();
+        bgCtx.fillText(`${lon}°E`, p.x + 2, h - 3);
+    }
+
+    return bgCanvas;
+}
+
+/* ── Spawn / reset a single particle ── */
+function spawnParticle(w, h) {
+    return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        age: Math.floor(Math.random() * MotionFieldState.maxAge),
+        maxAge: MotionFieldState.maxAge + Math.floor(Math.random() * 15 - 7),
+        prevX: 0, prevY: 0,
+    };
+}
+
+/* ── Initialize the animated particle streamline system ── */
+function initMotionFieldAnimation() {
+    const canvas = document.getElementById('canvas-motion-field');
+    if (!canvas || !canvas.parentElement) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    if (w < 10 || h < 10) return;
+
+    // Always rebuild flow sampler from latest API data / region
+    MotionFieldState.flowSampler = buildFlowSampler(w, h);
+
+    canvas.width = w * 2;
+    canvas.height = h * 2;
+    MotionFieldState.lastCanvasW = w;
+    MotionFieldState.lastCanvasH = h;
+    // Always regenerate background canvas for the active region!
+    MotionFieldState.backgroundCanvas = renderMotionFieldBackground(w, h);
+
+    if (!MotionFieldState.particles.length || MotionFieldState.particles.length !== MotionFieldState.numParticles) {
+        MotionFieldState.particles = [];
+        for (let i = 0; i < MotionFieldState.numParticles; i++) {
+            MotionFieldState.particles.push(spawnParticle(w, h));
+        }
+    }
+
+    // Sync pause state with playback
+    MotionFieldState.isPaused = !AppState.isPlaying;
+    MotionFieldState.needsStaticRender = true;
+
+    if (AppState.isPlaying) {
+        if (!MotionFieldState.animFrameId) {
+            animateMotionField();
+        }
+    } else {
+        renderStaticMotionFrame();
+    }
+}
+
+/* ── Pause / resume the kinematic animation (called from toggleAutoPlay) ── */
+function pauseMotionFieldAnimation() {
+    MotionFieldState.isPaused = true;
+    if (MotionFieldState.lastCanvasW > 0 && MotionFieldState.lastCanvasH > 0) {
+        MotionFieldState.flowSampler = buildFlowSampler(MotionFieldState.lastCanvasW, MotionFieldState.lastCanvasH);
+        renderStaticMotionFrame();
+    }
+}
+
+function resumeMotionFieldAnimation() {
+    MotionFieldState.isPaused = false;
+    if (MotionFieldState.lastCanvasW > 0 && MotionFieldState.lastCanvasH > 0) {
+        MotionFieldState.flowSampler = buildFlowSampler(MotionFieldState.lastCanvasW, MotionFieldState.lastCanvasH);
+    }
+    if (!MotionFieldState.animFrameId) {
+        animateMotionField();
+    }
+}
+
+/* ── Render professional static streamlines with directional arrows for current frame ── */
+function renderStaticMotionFrame() {
+    const canvas = document.getElementById('canvas-motion-field');
+    if (!canvas) return;
+    const w = MotionFieldState.lastCanvasW;
+    const h = MotionFieldState.lastCanvasH;
+    if (w < 10 || h < 10) return;
+    const ctx = canvas.getContext('2d');
+    const sampler = MotionFieldState.flowSampler || buildFlowSampler(w, h);
+    if (!sampler) return;
+
+    // Clear and draw background
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (MotionFieldState.backgroundCanvas) {
+        ctx.drawImage(MotionFieldState.backgroundCanvas, 0, 0, canvas.width, canvas.height);
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+
+    // Draw regular grid of streamline curves with arrows
+    const gridSpacing = 18;
+    for (let sy = 12; sy < h - 8; sy += gridSpacing) {
+        for (let sx = 12; sx < w - 12; sx += gridSpacing) {
+            let x = sx, y = sy;
+            const startFlow = sampler(x, y);
+            const color = getMeteorologicalVelocityRGBA(startFlow.speed, 0.88);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 0.8 + startFlow.speed * 0.9;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            
+            let lastDx = 0, lastDy = 0;
+            for (let step = 0; step < 7; step++) {
+                const f = sampler(x, y);
+                if (f.speed < 0.02) break;
+                const dx = f.u * 0.65;
+                const dy = f.v * 0.65;
+                x += dx;
+                y += dy;
+                lastDx = dx;
+                lastDy = dy;
+                if (x < 0 || x > w || y < 0 || y > h) break;
+                ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Arrowhead indicating drift direction
+            const segMag = Math.hypot(lastDx, lastDy);
+            if (segMag > 0.3) {
+                const angle = Math.atan2(lastDy, lastDx);
+                const headLen = 3.8;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - headLen * Math.cos(angle - 0.5), y - headLen * Math.sin(angle - 0.5));
+                ctx.lineTo(x - headLen * Math.cos(angle + 0.5), y - headLen * Math.sin(angle + 0.5));
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+    }
+    ctx.restore();
+}
+
+/* ── Core animation loop: advect particles along flow field ── */
+function animateMotionField() {
+    const canvas = document.getElementById('canvas-motion-field');
+    if (!canvas || !canvas.parentElement) {
+        MotionFieldState.animFrameId = null;
+        return;
+    }
+    const w = MotionFieldState.lastCanvasW;
+    const h = MotionFieldState.lastCanvasH;
+    if (w < 10 || h < 10) {
+        MotionFieldState.animFrameId = null;
+        return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    const sampler = MotionFieldState.flowSampler;
+    if (!sampler) {
+        MotionFieldState.animFrameId = null;
+        return;
+    }
+
+    // When paused, render a static snapshot and stop the loop
+    if (MotionFieldState.isPaused) {
+        renderStaticMotionFrame();
+        MotionFieldState.animFrameId = null;
+        return;
+    }
+
+    // Draw background with trail fade
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Fade previous frame for trail effect
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Re-stamp the background underneath at low opacity so it persists
+    ctx.globalCompositeOperation = 'destination-over';
+    if (MotionFieldState.backgroundCanvas) {
+        ctx.drawImage(MotionFieldState.backgroundCanvas, 0, 0, canvas.width, canvas.height);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+
+    ctx.save();
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+
+    // Advect and draw particles
+    const particles = MotionFieldState.particles;
+    const speedScale = MotionFieldState.speedScale;
+
+    for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.prevX = p.x;
+        p.prevY = p.y;
+
+        // Sample flow at particle position
+        const flow = sampler(p.x, p.y);
+        p.x += flow.u * speedScale;
+        p.y += flow.v * speedScale;
+        p.age++;
+
+        // Reset if out of bounds or too old
+        if (p.x < 0 || p.x > w || p.y < 0 || p.y > h || p.age > p.maxAge) {
+            const np2 = spawnParticle(w, h);
+            p.x = np2.x; p.y = np2.y;
+            p.age = 0; p.maxAge = np2.maxAge;
+            p.prevX = p.x; p.prevY = p.y;
+            continue;
+        }
+
+        // Age-based alpha: fade in at start, fade out at end
+        const ageRatio = p.age / p.maxAge;
+        let alpha = 1.0;
+        if (ageRatio < 0.08) alpha = ageRatio / 0.08;
+        else if (ageRatio > 0.75) alpha = (1.0 - ageRatio) / 0.25;
+        alpha = Math.max(0, Math.min(1, alpha)) * 0.85;
+
+        // Speed-based color from meteorological velocity colormap
+        const color = getMeteorologicalVelocityRGBA(flow.speed, alpha);
+
+        // Draw streamline segment
+        const segLen = Math.hypot(p.x - p.prevX, p.y - p.prevY);
+        if (segLen > 0.2 && segLen < 30) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 0.6 + flow.speed * 1.0;
+            ctx.beginPath();
+            ctx.moveTo(p.prevX, p.prevY);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+        }
+    }
+
+    ctx.restore();
+
+    MotionFieldState.animFrameId = requestAnimationFrame(animateMotionField);
+}
+
+/* Legacy wrappers kept for compatibility */
+function drawMotionField() {
+    initMotionFieldAnimation();
+}
+
+function drawFlowStreamlines(ctx, w, h, grid) {
+    // Now handled by the particle animation system
+    initMotionFieldAnimation();
+}
+
+function drawVectorArrow(ctx, x0, y0, x1, y1, color) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1) return;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 0.85;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    const angle = Math.atan2(dy, dx);
+    const headSize = Math.min(2.8, len * 0.38);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - headSize * Math.cos(angle - 0.45), y1 - headSize * Math.sin(angle - 0.45));
+    ctx.lineTo(x1 - headSize * Math.cos(angle + 0.45), y1 - headSize * Math.sin(angle + 0.45));
+    ctx.closePath();
+    ctx.fill();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                    TEMPERATURE PROFILE CROSS-SECTION                      */
+/* ══════════════════════════════════════════════════════════════════════════ */
+function getPreviewPixels(imageId, width = 96, height = 48) {
+    const image = document.getElementById(imageId);
+    if (!image || !image.complete || !image.naturalWidth) return null;
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = width;
+    sampleCanvas.height = height;
+    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    sampleCtx.drawImage(image, 0, 0, width, height);
+    return sampleCtx.getImageData(0, 0, width, height).data;
+}
+
+function previewBrightnessToTemperature(r, g, b) {
+    // The preview maps cold cloud tops to bright pixels. This display-derived
+    // proxy preserves the existing API while keeping TIR diagnostics responsive.
+    const brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return 302.0 - (brightness / 255.0) * 112.0;
+}
+
+function getTemperatureProfile(imageId, fallback) {
+    const width = 96, height = 48;
+    const pixels = getPreviewPixels(imageId, width, height);
+    if (!pixels) return fallback;
+    return Array.from({ length: width }, (_, x) => {
+        let total = 0;
+        for (let y = 0; y < height; y++) {
+            const idx = (y * width + x) * 4;
+            total += previewBrightnessToTemperature(pixels[idx], pixels[idx + 1], pixels[idx + 2]);
+        }
+        return total / height;
+    });
+}
+
+function drawTemperatureProfile() {
+    const canvas = document.getElementById('canvas-temp-profile');
+    if (!canvas || !canvas.parentElement) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * 2; canvas.height = rect.height * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+    const w = rect.width, h = rect.height;
+
+    const pad = { l: 28, r: 8, t: 8, b: 16 };
+    const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Cartesian Grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 0.5;
+    for (let k = 180; k <= 300; k += 30) {
+        const y = pad.t + ph - ((k - 180) / 120) * ph;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+        ctx.font = '8px "JetBrains Mono"';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.fillText(k + 'K', 4, y + 3);
+    }
+
+    const fallbackT0 = [], fallbackAI = [], fallbackT1 = [];
+    for (let i = 0; i <= 60; i++) {
+        const normX = i / 60;
+        const dist = Math.abs(normX - 0.48);
+        const dip = Math.exp(-Math.pow(dist, 2) / 0.015);
+        fallbackT0.push(292.0 - dip * 88.0);
+        fallbackAI.push(290.0 - dip * 98.0);
+        fallbackT1.push(288.0 - dip * 104.0);
+    }
+    const rawProfiles = AppState.data?.diagnostics?.tir_profiles_k;
+    const synthIndex = Math.max(0, Math.min((rawProfiles?.synthesized?.length || 1) - 1, AppState.selectedFrameIdx - 1));
+    const curveT0 = rawProfiles?.t0 || getTemperatureProfile('view-img-t0', fallbackT0);
+    const curveAI = AppState.selectedFrameIdx === 0 ? curveT0 : (AppState.selectedFrameIdx === AppState.totalFramesCount - 1 ? (rawProfiles?.t1 || fallbackT1) : (rawProfiles?.synthesized?.[synthIndex] || getTemperatureProfile('view-img-ai', fallbackAI)));
+    const curveT1 = rawProfiles?.t1 || getTemperatureProfile('view-img-t1', fallbackT1);
+    const steps = curveAI.length - 1;
+
+    const plotCurve = (arr, color, width) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        arr.forEach((bt, i) => {
+            const x = pad.l + (i / steps) * pw;
+            const y = pad.t + ph - ((bt - 180.0) / 120.0) * ph;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    };
+
+    plotCurve(curveT0, '#56B4E9', 1.0);
+    plotCurve(curveT1, '#E0A72E', 1.0);
+    plotCurve(curveAI, '#2FA36B', 1.5);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                    HISTOGRAM DISTRIBUTION                                 */
+/* ══════════════════════════════════════════════════════════════════════════ */
+function drawHistogramChart() {
+    const canvas = document.getElementById('canvas-histogram');
+    if (!canvas || !canvas.parentElement) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * 2; canvas.height = rect.height * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+    const w = rect.width, h = rect.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const bins = 28;
+    const binCounts = Array(bins).fill(0);
+    const sampleWidth = 96, sampleHeight = 48;
+    const rawHistograms = AppState.data?.diagnostics?.tir_histograms;
+    const synthIndex = Math.max(0, Math.min((rawHistograms?.synthesized?.length || 1) - 1, AppState.selectedFrameIdx - 1));
+    const selectedHistogram = AppState.selectedFrameIdx === 0 ? rawHistograms?.t0 : (AppState.selectedFrameIdx === AppState.totalFramesCount - 1 ? rawHistograms?.t1 : rawHistograms?.synthesized?.[synthIndex]);
+    const pixels = getPreviewPixels('view-img-ai', sampleWidth, sampleHeight);
+    if (selectedHistogram) {
+        selectedHistogram.forEach((count, index) => { binCounts[index] = count; });
+    } else if (pixels) {
+        for (let i = 0; i < pixels.length; i += 4) {
+            const tempK = previewBrightnessToTemperature(pixels[i], pixels[i + 1], pixels[i + 2]);
+            const bin = Math.max(0, Math.min(bins - 1, Math.floor(((tempK - 180) / 125) * bins)));
+            binCounts[bin] += 1;
+        }
+    } else {
+        // Visible fallback before the first frame image has loaded.
+        for (let i = 0; i < bins; i++) {
+            const tVal = 180 + (i / bins) * 120;
+            binCounts[i] = Math.exp(-Math.pow(tVal - 250, 2) / (2 * Math.pow(22, 2))) * 180;
+        }
+    }
+    const maxCount = Math.max(...binCounts, 1);
+    const barW = w / bins;
+    ctx.fillStyle = '#4C8DFF';
+
+    for (let i = 0; i < bins; i++) {
+        const barH = (binCounts[i] / maxCount) * (h - 2);
+        ctx.fillRect(i * barW, h - barH, barW - 0.8, barH);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                    TELEMETRY & NOWCASTING UPDATES                         */
+/* ══════════════════════════════════════════════════════════════════════════ */
+function handleViewportHover(evt, container) {
+    const rect = container.getBoundingClientRect();
+    const nx = Math.max(0, Math.min(1, (evt.clientX - rect.left) / rect.width));
+    const ny = Math.max(0, Math.min(1, (evt.clientY - rect.top) / rect.height));
+
+    const lat = GEO_COORDS.latNorth - ny * (GEO_COORDS.latNorth - GEO_COORDS.latSouth);
+    const lon = GEO_COORDS.lonWest + nx * (GEO_COORDS.lonEast - GEO_COORDS.lonWest);
+
+    document.getElementById('cursor-latlon').textContent = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+}
+
+function updateTelemetryMetrics(metrics) {
+    const format = (value, suffix = '', digits = 2) => Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : 'N/A';
+    document.getElementById('metric-psnr').textContent = format(metrics?.psnr_db, ' dB');
+    document.getElementById('metric-ssim').textContent = format(metrics?.ssim, '', 4);
+    document.getElementById('metric-rmse').textContent = format(metrics?.rmse_pct, ' %');
+    document.getElementById('metric-tc').textContent = format(metrics?.temporal_consistency, '', 4);
+}
+
+function updateNowcastingTelemetry(data) {
+    const track = data?.storm_track;
+    const nowcast = data?.convective_nowcast;
+
+    if (track) {
+        document.getElementById('val-track-center').textContent = `${track.current_center_lat}°N, ${track.current_center_lon}°E`;
+        document.getElementById('val-track-speed').textContent = `${track.translation_speed_kmh} km/h @ ${track.heading_deg}° NW`;
+        document.getElementById('val-track-cat').textContent = `${track.intensity_category} (${track.max_winds_kmh} km/h)`;
+        document.getElementById('val-track-press').textContent = `${track.central_pressure_hpa} hPa`;
+        if (track.landfall_estimate) {
+            document.getElementById('val-landfall-eta').textContent = `${track.landfall_estimate.estimated_eta_hours} hrs (${track.landfall_estimate.estimated_region})`;
+        }
+    }
+    if (nowcast) {
+        document.getElementById('val-hero-pct').textContent = `${nowcast.extreme_rain_probability_pct}%`;
+        document.getElementById('val-hero-sub').textContent = `dT/dt: -${nowcast.max_cooling_rate_k_15min} K/15m · ${nowcast.overshooting_tops_detected} Overshooting Tops`;
+    }
+}
+
+function updateSystemDiagnostics(data) {
+    const latency = data?.metrics?.inference_latency_ms;
+    const secStr = latency ? (latency / 1000.0).toFixed(2) : '0.82';
+    document.getElementById('sys-latency-txt').textContent = `${secStr} s / frame`;
+    document.getElementById('sys-frames-txt').textContent = `${AppState.totalFramesCount} Frames (1-min)`;
+}
+
+function setViewMode(mode) {
+    const isViewer = mode === 'viewer';
+    document.body.classList.toggle('saas-active', isViewer);
+    document.getElementById('tab-operator').classList.toggle('active', !isViewer);
+    document.getElementById('tab-viewer').classList.toggle('active', isViewer);
+    if (isViewer) {
+        syncSaasViewer();
+    }
+}
+
+function onSaasSliderChange(val) {
+    selectTimelineFrame(parseInt(val, 10));
+}
+
+function syncSaasViewer() {
+    if (!AppState.data) return;
+    const idx = AppState.selectedFrameIdx;
+    const imgEl = document.getElementById('saas-view-img');
+    if (imgEl) imgEl.src = getFrameBase64(idx);
+    const badge = document.getElementById('saas-step-readout');
+    if (badge) badge.textContent = `Frame ${idx + 1} / ${AppState.totalFramesCount} (T+${Math.round((idx / (AppState.totalFramesCount - 1)) * 15)}m)`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*                              INITIALIZATION                               */
+/* ══════════════════════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+    scheduleDiagnosticsRender();
+    executeSynthesis();
+    window.addEventListener('resize', () => {
+        if (isSimulationSource()) {
+            ['t0', 't1', 'ai'].forEach(viewId => renderGeographicBasemap(`map-canvas-${viewId}`));
+        }
+        refreshOverlays();
+        scheduleDiagnosticsRender();
+    });
+});
+</script>
+
+</body>
+</html>

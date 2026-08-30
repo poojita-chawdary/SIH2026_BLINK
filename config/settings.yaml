@@ -1,0 +1,137 @@
+# Project BLINK Configuration - Aero-Interpolate System
+# Target System: INSAT-3DS / INSAT-3DR Earth Observation Frame Synthesis Pipeline
+
+system:
+  project_name: "BLINK"
+  version: "1.0.0"
+  description: "Bridging Latency in Imagery via Neural Kinematics"
+  device: "auto"  # "cuda", "cpu", or "auto"
+  num_workers: 4
+  seed: 42
+
+data_sources:
+  mosdac:
+    enabled: true
+    portal_url: "https://mosdac.gov.in"
+    dataset_id: "3SIMG_L1B_STD"
+    cache_dir: "data/raw_netcdf/mosdac"
+    default_region:
+      lat_north: 35.0
+      lat_south: 5.0
+      lon_west: 65.0
+      lon_east: 100.0
+  real_satellite:
+    enabled: true
+    source: "NASA_GIBS_OPEN_WMTS"
+    cache_dir: "data/raw_netcdf/real_satellite"
+    default_region: "indian_subcontinent"
+
+nowcasting:
+  cloudburst:
+    overshooting_top_bt_k: 210.0
+    cooling_rate_threshold_k_per_15min: -2.0
+    severe_bt_threshold_k: 220.0
+    sigmoid_beta: [-2.5, 0.8, 0.12, 1.5]
+    reference_rainfall_threshold_mm_hr: 100.0
+  dvorak:
+    pressure_wind_a: 2.3
+    pressure_wind_b: 0.76
+    reference_pressure_hpa: 1010.0
+
+channels:
+  # INSAT-3DS Multi-Spectral Imager Channels
+  supported:
+    IMG_VIS:
+      name: "Visible"
+      wavelength_um: "0.52 - 0.72"
+      resolution_km: 1.0
+      unit: "Reflectance"
+      min_val: 0.0
+      max_val: 1.0
+      colormap: "gray"
+    IMG_SWIR:
+      name: "Short-Wave Infrared"
+      wavelength_um: "1.55 - 1.70"
+      resolution_km: 1.0
+      unit: "Reflectance"
+      min_val: 0.0
+      max_val: 1.0
+      colormap: "gray"
+    IMG_MWIR:
+      name: "Mid-Wave Infrared"
+      wavelength_um: "3.80 - 4.00"
+      resolution_km: 4.0
+      unit: "Kelvin"
+      min_val: 180.0
+      max_val: 330.0
+      colormap: "inferno"
+    IMG_WV:
+      name: "Water Vapour"
+      wavelength_um: "6.50 - 7.00"
+      resolution_km: 8.0
+      unit: "Kelvin"
+      min_val: 190.0
+      max_val: 280.0
+      colormap: "viridis"
+    IMG_TIR1:
+      name: "Thermal Infrared 1"
+      wavelength_um: "10.2 - 11.2"
+      resolution_km: 4.0
+      unit: "Kelvin"
+      min_val: 180.0
+      max_val: 330.0
+      colormap: "magma"
+    IMG_TIR2:
+      name: "Thermal Infrared 2"
+      wavelength_um: "11.5 - 12.5"
+      resolution_km: 4.0
+      unit: "Kelvin"
+      min_val: 180.0
+      max_val: 330.0
+      colormap: "magma"
+
+  default_channels: ["IMG_VIS", "IMG_WV", "IMG_TIR1"]
+  rgb_composite:
+    red: "IMG_VIS"
+    green: "IMG_WV"
+    blue: "IMG_TIR1"
+
+tiling:
+  tile_size: 512
+  tile_overlap: 64
+  blend_method: "hann"  # "linear" or "hann"
+
+models:
+  raft:
+    model_type: "raft_small"  # "raft_small" or "raft_large"
+    pretrained: true
+    iters: 12
+    dropout: 0.0
+  conv_lstm:
+    input_dim: 64
+    hidden_dims: [64, 32]
+    kernel_size: [3, 3]
+    num_layers: 2
+    batch_first: true
+  unet_decoder:
+    in_channels: 6
+    out_channels: 3
+    features: [64, 128, 256]
+    bilinear: true
+
+pipeline:
+  target_cadence_minutes: 1.0
+  native_cadence_minutes: 15.0
+  sub_timesteps: [0.0667, 0.1333, 0.2, 0.2667, 0.3333, 0.4, 0.4667, 0.5333, 0.6, 0.6667, 0.7333, 0.8, 0.8667, 0.9333]
+  divergence_weight: 0.05
+  charbonnier_eps: 0.001
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins: ["*"]
+  max_upload_size_mb: 100
+
+ui:
+  theme: "dark"
+  default_animation_fps: 8
